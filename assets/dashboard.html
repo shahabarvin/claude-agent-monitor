@@ -13,9 +13,14 @@
   * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0 !important; }
   body { background: var(--paper); color: var(--ink); font-family: var(--mono); font-size: 13px; line-height: 1.5; }
 
-  .conn { position: fixed; top: 0; right: 0; z-index: 10; background: var(--ink); color: var(--paper);
+  .conn { position: fixed; top: 0; right: 0; z-index: 11; background: var(--ink); color: var(--paper);
           font-size: 10px; padding: 2px 8px; letter-spacing: 1px; text-transform: uppercase; }
   .conn.err { background: var(--fail); }
+  /* on the group view the full-width nav bar owns the top strip, so the conn
+     badge sits INSIDE it (pushed to the right) instead of floating as a
+     separate vertical tab over the grid. */
+  body.has-nav .conn { position: static; margin-left: auto; padding: 0; background: none; color: #aaa; }
+  body.has-nav .nav { padding-right: 12px; }
 
   #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 8px; background: var(--paper); }
 
@@ -225,8 +230,8 @@
   <a id="nav-new" href="#" title="create a draft task" onclick="return newDraft(event)">+ new task</a><span class="sep">·</span>
   <a id="nav-md" href="#">report.md</a><span class="sep">·</span>
   <a id="nav-html" href="#">report.html</a>
+  <span class="conn" id="conn">connecting</span>
 </nav>
-<span class="conn" id="conn">connecting</span>
 
 <section id="home" hidden>
   <div class="home-title">agent monitor</div>
