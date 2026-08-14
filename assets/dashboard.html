@@ -33,7 +33,7 @@
   .card.drop-before { box-shadow: inset 4px 0 0 0 var(--ink); }
   .card.drop-after { box-shadow: inset -4px 0 0 0 var(--ink); }
 
-  .card-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 2px solid var(--ink); cursor: grab; }
+  .card-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 2px solid var(--ink); cursor: grab; user-select: none; }
   .card-head:active { cursor: grabbing; }
   .card-head .rm { cursor: pointer; }
   .card-head.running { background: var(--run); color: var(--ink); }
@@ -357,28 +357,26 @@ function dropBefore(target, x, y) {
 function wireDrag(entry) {
   const el = entry.el;
   const head = el.querySelector('.card-head');
-  if (head) {
-    head.addEventListener('mousedown', (e) => {
-      if (e.target.closest('button')) return;   // remove / action buttons are not handles
-      el.draggable = true;
-      const off = () => { el.draggable = false; document.removeEventListener('mouseup', off); };
-      document.addEventListener('mouseup', off);
-    });
-  }
-  el.addEventListener('dragstart', (e) => {
-    if (!el.draggable) { e.preventDefault(); return; }
+  if (!head) return;
+  // Only the top bar is the drag handle. The card itself is NEVER draggable, so
+  // caret placement and typing inside the draft inputs is never hijacked - a
+  // draggable ancestor blocks clicking into a child textarea on Chrome. Reorder
+  // still moves the whole card; only the grab origin is restricted to the head.
+  head.setAttribute('draggable', 'true');
+  head.addEventListener('dragstart', (e) => {
+    if (e.target.closest('button')) { e.preventDefault(); return; }   // remove btn is not a handle
     dragSrcId = entry.id;
     draggingNow = true;
     el.classList.add('dragging');
     try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', entry.id); } catch (_) {}
   });
-  el.addEventListener('dragend', () => finishDrag());
+  head.addEventListener('dragend', () => finishDrag());
 }
 
 function finishDrag() {
   clearDropMarker();
   const src = dragSrcId && cards.get(dragSrcId);
-  if (src && src.el) { src.el.classList.remove('dragging'); src.el.draggable = false; }
+  if (src && src.el) src.el.classList.remove('dragging');
   if (dragSrcId) {
     const ids = domCardIds();
     pendingOrder = ids.slice();
