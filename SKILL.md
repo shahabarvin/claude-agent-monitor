@@ -42,6 +42,11 @@ manifest, agent logs and chat. Use a fresh group name per working session so
 runs don't collide. All paths below are relative to
 `<AGENT_MONITOR_DIR>/<group>/`.
 
+Opening the server root with **no** `?g=` shows a home page that lists every
+group on the server (agent counts + last activity) and links into each one. It
+is the reconnect view: point the human there after a browser or editor restart
+and they can pick the session to rejoin, or type a new group name to start one.
+
 ## 3. Register agent cards - `manifest.json`
 
 Before (or as) you launch a background agent, add it to `manifest.json`:
@@ -161,8 +166,21 @@ Benjamin Rachel   Ezekiel  Metatron
 - When the human clicks **remove** on a `done` card, the server drops that
   agent from `manifest.json` (the log file is kept). You can also remove an
   entry yourself by rewriting `manifest.json`.
-- The **archive** and **clear** buttons only touch the chat, via `clear`
-  markers - no files are deleted.
+- The **clear** button only touches the chat, via a `clear` marker - no files
+  are deleted, and the live chat moves to the archive.
+- The **archive** view lists past (cleared) chat sessions. Each row can be read,
+  deleted on its own, or wiped together via **delete all**; deleting rewrites
+  `chat.jsonl` and always keeps the current live chat. This is the one place the
+  chat file is trimmed, so re-open your tail afterwards if you keep a handle on
+  it.
+
+## Session report
+
+Every group view has a **report.md** / **report.html** link (top-left), and the
+home page offers the same per group. It downloads a report of the session: each
+agent's status, task, worktree, timing and full log, followed by the chat
+transcript. Served by `GET /report?g=<group>&format=md|html` - handy for handing
+off or archiving a run outside the dashboard.
 
 ## Summary of files (per group)
 

@@ -15,8 +15,16 @@ no dependencies.
   a wall of squares with real work filling in from the top-left.
 - A manager chat bar pinned to the bottom. Type to the manager session, paste
   files and clipboard screenshots (they stage as chips until you hit send),
-  preview images in a modal, and clear or archive the conversation. Mixed
+  preview images in a modal, and clear or archive the conversation. Archived
+  sessions can be re-read and deleted one at a time or all at once. Mixed
   right-to-left text (Persian, Arabic) renders correctly.
+- A home page. Open the server root with no `?g=` and you get a list of every
+  session on this server, with agent counts and last activity, so reopening the
+  browser drops you back on a menu of runs to jump into. You can also start a new
+  group from there.
+- A downloadable report. From any group view (or the home list) you can grab a
+  Markdown or HTML report of that session: every agent's status, task, worktree,
+  timing and full log, followed by the chat transcript.
 - Black-on-white monospace theme. No build step, no external assets.
 
 It's display-only. All it does is render the JSON, log, and JSONL files on disk
@@ -37,7 +45,9 @@ cd claude-agent-monitor
 npm start          # or: node scripts/server.js
 ```
 
-Then open **http://127.0.0.1:4599/?g=main** in your browser.
+Then open **http://127.0.0.1:4599/?g=main** in your browser. Open
+**http://127.0.0.1:4599/** with no `?g=` to see the list of all sessions and pick
+one (or start a new group).
 
 Two optional settings:
 
@@ -116,8 +126,11 @@ uploads/<stamped-file>   files pasted or uploaded from the browser
 
 The page polls `manifest.json` and each `agents/<id>.log` every 1.5 seconds, and
 `chat.jsonl` every second, with no-store caching, so the browser always sees the
-latest bytes. The server exposes four small write endpoints the page uses:
-`POST /say`, `/clear`, `/upload`, and `/remove`, each taking `?g=<group>`.
+latest bytes. The server exposes small endpoints the page uses:
+`POST /say`, `/clear`, `/upload`, `/remove`, `/archive-delete`, and
+`/archive-delete-all` (each taking `?g=<group>`), plus `GET /groups-list` (the
+home page's session list) and `GET /report?g=<group>&format=md|html` (the
+downloadable session report).
 
 See `SKILL.md` for the full manager protocol: manifest shape, log format, chat
 roles, `[MGR]` management markers, and the agent name pool.
