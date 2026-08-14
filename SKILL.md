@@ -129,13 +129,20 @@ Your side of the loop, as you tail the group:
 - **When you find one, spawn its agent** for that `task` (in its `worktree` if
   set), then rewrite the same card: set `status:"running"` and `startedAt`, and
   **delete the `playRequestedAt` field** so it can't be picked up twice. From
-  there it is an ordinary agent card - stream `agents/<id>.log` as usual, and
-  post an `[MGR]` status line so the human sees the launch in the chat.
+  there it is an ordinary agent card - stream its log as usual, and post an
+  `[MGR]` status line so the human sees the launch in the chat.
 - **Leave untouched** any draft with **no** `playRequestedAt` - the human is
   still editing it. Never launch a draft on your own.
 
-Keep the card's `id` when you launch it: the log file is `agents/<id>.log`, and
-the page swaps the draft form for the streaming card automatically.
+> **Never change a played card's `id`, and never rename its log file.** A draft
+> keeps its generated `id` (e.g. `draft-a1b2c3`) for its whole life. Change only
+> `name` (display), `status`, `worktree`, `startedAt`/`endedAt`. The card reads
+> its stream from `agents/<id>.log`, so the streaming agent must append to that
+> exact file - if you rename the log to the display name, the card reads an
+> empty stream. And every later update (flip to `done`, `remove`) must target
+> the **same `id`**, not the display name - close a card by its `name` and the
+> match silently fails, leaving it stuck green forever. Set `name` for the human
+> to read; key everything else off `id`.
 
 ## 6. Manager chat protocol - `chat.jsonl`
 
