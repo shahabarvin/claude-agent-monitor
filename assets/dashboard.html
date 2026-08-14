@@ -26,8 +26,16 @@
   #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 8px; background: var(--paper); }
 
   .card { background: var(--paper); border: 2px solid var(--ink); display: flex; flex-direction: column; height: 350px; }
+  /* drag-to-reorder: the head is the grab handle, the card is the thing that
+     moves. The dragged card dims so you can see it travel; the slot it will land
+     in is marked with a thick ink rule down the leading edge. */
+  .card.dragging { opacity: .4; outline: 2px dashed var(--ink); outline-offset: -2px; }
+  .card.drop-before { box-shadow: inset 4px 0 0 0 var(--ink); }
+  .card.drop-after { box-shadow: inset -4px 0 0 0 var(--ink); }
 
-  .card-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 2px solid var(--ink); }
+  .card-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 2px solid var(--ink); cursor: grab; }
+  .card-head:active { cursor: grabbing; }
+  .card-head .rm { cursor: pointer; }
   .card-head.running { background: var(--run); color: var(--ink); }
   .card-head.failed, .card-head.stopped { background: var(--fail); color: var(--paper); }
   .card-head.done { background: var(--done); color: var(--paper); }
@@ -286,6 +294,122 @@ const conn = document.getElementById('conn');
 const cards = new Map(); // id -> {el, streamEl, lastText}
 const removedLocal = new Set();
 
+// ── drag-to-reorder ───────────────────────────────────────────────────────────
+// The human drags cards (agent or draft) to rearrange the grid. Order is saved
+// per-card as an integer `order` in the manifest via POST /reorder, so it rides
+// the 1.5s poll and a page refresh. During a drag we live-reorder the DOM for
+// smooth feedback and hold `draggingNow` so the poll does not fight the pointer.
+let dragSrcId = null;      // id of the card currently being dragged
+let draggingNow = false;   // true between dragstart and dragend
+let pendingOrder = null;   // ids in the order we just POSTed - bridges the poll gap
+let pendingSince = 0;
+
+// The ids of the real cards in their current DOM order (placeholders excluded).
+function domCardIds() {
+  return [...grid.querySelectorAll('.card')].map((el) => el.dataset.id).filter(Boolean);
+}
+
+// The order the manifest asks for: sort agents by their `order` int, and keep
+// any card without one at the end in its manifest-array position (new cards the
+// manager just appended land after the arranged ones).
+function manifestOrderIds(agents) {
+  return agents
+    .map((a, i) => ({ id: a.id, o: (typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER), i }))
+    .sort((x, y) => (x.o - y.o) || (x.i - y.i))
+    .map((x) => x.id);
+}
+
+// Move the real cards into `orderIds` order, always ahead of the placeholders.
+// insertBefore on a node already in place is a no-op, so this is cheap to run
+// every tick and never disturbs stream scroll or input focus.
+function applyCardOrder(orderIds) {
+  const firstPh = grid.querySelector('.ph');
+  for (const id of orderIds) {
+    const entry = cards.get(id);
+    if (entry && entry.el && entry.el.parentNode === grid) grid.insertBefore(entry.el, firstPh);
+  }
+}
+
+async function persistOrder(orderIds) {
+  try {
+    await fetch('/reorder?g=' + GROUP, { method: 'POST', body: JSON.stringify({ order: orderIds }) });
+  } catch (e) { /* the next drag will try again */ }
+}
+
+function clearDropMarker() {
+  for (const el of grid.querySelectorAll('.drop-before, .drop-after')) {
+    el.classList.remove('drop-before', 'drop-after');
+  }
+}
+
+// Decide whether the dragged card should land before `target` in reading order
+// (top-to-bottom, left-to-right), given a wrapping multi-column grid.
+function dropBefore(target, x, y) {
+  const r = target.getBoundingClientRect();
+  if (y < r.top) return true;      // pointer is in a row above this card
+  if (y > r.bottom) return false;  // pointer is in a row below this card
+  return x < r.left + r.width / 2; // same row - left half means "before"
+}
+
+// Attach handlers to one card. The head arms dragging (so stream text stays
+// selectable and draft inputs stay usable), and only a head that is not a button
+// arms it. Handlers key off entry.id (live) so they survive a Play id-rename.
+function wireDrag(entry) {
+  const el = entry.el;
+  const head = el.querySelector('.card-head');
+  if (head) {
+    head.addEventListener('mousedown', (e) => {
+      if (e.target.closest('button')) return;   // remove / action buttons are not handles
+      el.draggable = true;
+      const off = () => { el.draggable = false; document.removeEventListener('mouseup', off); };
+      document.addEventListener('mouseup', off);
+    });
+  }
+  el.addEventListener('dragstart', (e) => {
+    if (!el.draggable) { e.preventDefault(); return; }
+    dragSrcId = entry.id;
+    draggingNow = true;
+    el.classList.add('dragging');
+    try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', entry.id); } catch (_) {}
+  });
+  el.addEventListener('dragend', () => finishDrag());
+}
+
+function finishDrag() {
+  clearDropMarker();
+  const src = dragSrcId && cards.get(dragSrcId);
+  if (src && src.el) { src.el.classList.remove('dragging'); src.el.draggable = false; }
+  if (dragSrcId) {
+    const ids = domCardIds();
+    pendingOrder = ids.slice();
+    pendingSince = Date.now();
+    persistOrder(ids);
+  }
+  dragSrcId = null;
+  draggingNow = false;
+}
+
+// Live reorder as the pointer moves: slot the dragged card in beside whatever
+// card is under the cursor, or park it at the end of the cards when over an empty
+// placeholder. Marking the target's leading/trailing edge shows where it will go.
+grid.addEventListener('dragover', (e) => {
+  if (!dragSrcId) return;
+  const src = cards.get(dragSrcId);
+  if (!src || !src.el) return;
+  e.preventDefault();
+  try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+  clearDropMarker();
+  const over = e.target.closest('.card');
+  if (over && over !== src.el && grid.contains(over)) {
+    const before = dropBefore(over, e.clientX, e.clientY);
+    over.classList.add(before ? 'drop-before' : 'drop-after');
+    grid.insertBefore(src.el, before ? over : over.nextSibling);
+  } else if (e.target.closest('.ph')) {
+    grid.insertBefore(src.el, grid.querySelector('.ph'));  // drop into empty space = end of cards
+  }
+});
+grid.addEventListener('drop', (e) => { if (dragSrcId) { e.preventDefault(); finishDrag(); } });
+
 function fmtElapsed(startIso, endIso) {
   const s = new Date(startIso).getTime();
   const e = endIso ? new Date(endIso).getTime() : Date.now();
@@ -323,6 +447,7 @@ function ensureCard(a) {
   cards.set(a.id, entry);
   // Cards land BEFORE the placeholders, so empty slots trail the real work.
   grid.insertBefore(el, grid.querySelector('.ph'));
+  wireDrag(entry);
   return entry;
 }
 
@@ -480,6 +605,7 @@ function syncDraftCard(a) {
     cards.set(a.id, entry);
     grid.insertBefore(el, grid.querySelector('.ph'));
     wireDraftCard(entry);
+    wireDrag(entry);
     if (autoEditIds.has(a.id)) { autoEditIds.delete(a.id); entry.editing = true; }
   }
   renderDraftCard(entry, a);
@@ -556,8 +682,8 @@ async function tick() {
     const man = await res.json();
     conn.textContent = 'live · ' + GROUP;
     conn.className = 'conn';
-    for (const a of (man.agents || [])) {
-      if (removedLocal.has(a.id)) continue;
+    const agents = (man.agents || []).filter((a) => !removedLocal.has(a.id));
+    for (const a of agents) {
       if (a.status === 'draft') { syncDraftCard(a); continue; }
       const entry = ensureCard(a);
       renderMeta(entry, a);
@@ -566,6 +692,16 @@ async function tick() {
         if (lr.ok) renderStream(entry, await lr.text());
       } catch (e) { /* log may not exist yet */ }
     }
+    // Respect the saved drag order. While a drag is live, leave the DOM alone so
+    // the poll never fights the pointer. `pendingOrder` bridges the gap between a
+    // just-dropped reorder and the manifest catching up, so there is no snap-back.
+    let orderIds = manifestOrderIds(agents);
+    if (pendingOrder) {
+      const known = (list) => list.filter((id) => cards.has(id)).join(',');
+      if (known(orderIds) === known(pendingOrder) || Date.now() - pendingSince > 10000) pendingOrder = null;
+      else orderIds = pendingOrder.slice();
+    }
+    if (!draggingNow) applyCardOrder(orderIds);
   } catch (e) {
     conn.textContent = 'disconnected';
     conn.className = 'conn err';

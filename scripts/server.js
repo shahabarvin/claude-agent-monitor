@@ -430,6 +430,36 @@ http.createServer((req, res) => {
       }
     }
 
+    // POST /reorder?g=<group> - body { order: [id, id, ...] } - persist the
+    // human's drag order by stamping each agent with an integer `order`. The
+    // manifest is re-read right before writing, so a manager write that landed in
+    // between (a new agent, a status flip) is preserved - only the ordering
+    // fields are touched. Ids in the payload get their list position; any agent
+    // NOT listed (e.g. one the manager just appended) sorts to the end, after the
+    // listed ones, keeping its relative manifest position.
+    if (req.method === 'POST' && urlPath === '/reorder') {
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 65536) req.destroy(); });
+      req.on('end', () => {
+        try {
+          let d = {};
+          try { d = JSON.parse(body || '{}'); } catch (e) { d = {}; }
+          const order = Array.isArray(d.order) ? d.order.map((x) => String(x)) : [];
+          const pos = new Map();
+          order.forEach((id, i) => { if (!pos.has(id)) pos.set(id, i); });
+          const man = readManifest(groupDir);
+          const n = order.length;
+          man.agents.forEach((a, i) => {
+            a.order = pos.has(a.id) ? pos.get(a.id) : (n + i);
+          });
+          writeManifest(groupDir, man);
+          res.writeHead(200, { 'Cache-Control': 'no-store' });
+          return res.end('ok');
+        } catch (e) { res.writeHead(500); return res.end('reorder error'); }
+      });
+      return;
+    }
+
     // ── draft task cards ──────────────────────────────────────────────────────
     // Drafts are cards the human defines in the browser and launches with a Play
     // button. The page never runs an agent; it only writes intent to the
