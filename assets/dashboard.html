@@ -19,7 +19,7 @@
 
   #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 8px; background: var(--paper); }
 
-  .card { background: var(--paper); border: 2px solid var(--ink); display: flex; flex-direction: column; height: 460px; }
+  .card { background: var(--paper); border: 2px solid var(--ink); display: flex; flex-direction: column; height: 350px; }
 
   .card-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 2px solid var(--ink); }
   .card-head.running { background: var(--run); color: var(--ink); }
@@ -53,7 +53,7 @@
   .stream div { unicode-bidi: plaintext; }
 
   /* the always-present empty slot - where the next agent will land */
-  .ph { border: 2px dashed var(--ink); height: 460px; display: flex; align-items: center;
+  .ph { border: 2px dashed var(--ink); height: 350px; display: flex; align-items: center;
         justify-content: center; color: #c6c6c6; letter-spacing: 1px; font-size: 13px; }
 
   /* draft cards - defined in the browser, launched with Play. Dashed border and
@@ -174,12 +174,16 @@
   #imgmodal .bar a:hover, #imgmodal .bar button:hover { background: var(--ink); color: var(--paper); }
 
   /* top-left nav on the group view - home link + report downloads (mirrors .conn) */
-  .nav { position: fixed; top: 0; left: 0; z-index: 10; background: var(--ink); color: var(--paper);
-         font-size: 10px; padding: 2px 8px; letter-spacing: 1px; text-transform: uppercase;
-         display: flex; gap: 12px; }
+  .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 10; background: var(--ink); color: var(--paper);
+         font-size: 11px; padding: 6px 12px; letter-spacing: 1px; text-transform: uppercase;
+         display: flex; gap: 12px; align-items: center; }
+  /* the fixed full-width bar overlaps the grid; push the grid below it */
+  body.has-nav #grid { padding-top: 30px; }
   .nav a { color: var(--paper); text-decoration: none; }
   .nav a:hover { color: var(--run); }
   .nav .sep { color: #888; }
+  /* per-message timestamp: small, muted, on its own line under the text */
+  .m-ts { display: block; font-size: 9.5px; color: var(--faint); letter-spacing: .5px; margin-top: 2px; }
 
   /* home / reconnect view - the list of sessions when opened without ?g= */
   #home { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
@@ -461,7 +465,7 @@ async function newDraft(e) {
 // reads as a wall of squares with work filling in from the top-left.
 function fillPlaceholders() {
   const cols = Math.max(1, Math.floor((grid.clientWidth + 8) / 388));
-  const rowH = 468; // fixed cell height + gap
+  const rowH = 358; // fixed cell height + gap
   const rows = Math.max(1, Math.ceil((window.innerHeight - grid.getBoundingClientRect().top) / rowH));
   const needed = Math.max(cols * rows - cards.size, 1);
   const phs = [...grid.querySelectorAll('.ph')];
@@ -679,6 +683,19 @@ function msgHtml(m) {
   }
   // Right-to-left content (e.g. Persian/Arabic) reads RTL, prefix included.
   if (/[؀-ۿ]/.test(m.text)) d.dir = 'rtl';
+  // Timestamp on every message: date shown only when it differs from the
+  // previous message's day, time always. Stays LTR even inside an RTL bubble.
+  if (m.ts) {
+    const dt = new Date(m.ts);
+    if (!isNaN(dt)) {
+      const stamp = document.createElement('span');
+      stamp.className = 'm-ts';
+      const time = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      stamp.textContent = m._showDate ? (dt.toLocaleDateString() + ' ' + time) : time;
+      stamp.dir = 'ltr';
+      d.appendChild(stamp);
+    }
+  }
   return d.outerHTML;
 }
 
@@ -697,6 +714,19 @@ function fmtRange(seg) {
   const f = new Date(seg[0].ts), l = new Date(seg[seg.length - 1].ts);
   const d = (x) => x.toLocaleDateString() + ' ' + x.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   return d(f) + ' → ' + d(l);
+}
+
+// Mark each message to show its date only when the day changed from the one
+// before it (time is always shown). Mutates + returns the same list.
+function markDates(list) {
+  let prevDay = '';
+  for (const m of list) {
+    const dt = m.ts ? new Date(m.ts) : null;
+    const day = (dt && !isNaN(dt)) ? dt.toDateString() : '';
+    m._showDate = !!day && day !== prevDay;
+    if (day) prevDay = day;
+  }
+  return list;
 }
 
 function renderChat() {
@@ -722,7 +752,7 @@ function renderChat() {
   if (typeof chatView === 'number') {
     const seg = archives[chatView] || [];
     chatMsgs.innerHTML = '<div class="arch-banner">archive #' + (chatView + 1) +
-      ' (read-only) - archive button returns to live</div>' + seg.map(msgHtml).join('');
+      ' (read-only) - archive button returns to live</div>' + markDates(seg.slice()).map(msgHtml).join('');
     return;
   }
 
@@ -730,7 +760,7 @@ function renderChat() {
   const nearBottom = chatMsgs.scrollHeight - chatMsgs.scrollTop - chatMsgs.clientHeight < 60;
   const last = current[current.length - 1];
   if (last && (last.role === 'manager' || last.role === 'status')) awaitingReply = false;
-  let html = current.filter(m => m.role !== 'typing' && (m.file || (m.text || '').trim())).map(msgHtml).join('');
+  let html = markDates(current.filter(m => m.role !== 'typing' && (m.file || (m.text || '').trim()))).map(msgHtml).join('');
   // A trailing typing marker = the manager is composing; awaitingReply covers
   // the gap BEFORE the manager's first append too.
   if ((last && last.role === 'typing') || awaitingReply) html += '<div class="m-typing">. . .</div>';
@@ -878,6 +908,7 @@ if (HOME) {
   // group view: reveal the top-left nav and point its report links at this group
   const nav = document.getElementById('nav');
   nav.hidden = false;
+  document.body.classList.add('has-nav');
   document.getElementById('nav-md').href = '/report?g=' + encodeURIComponent(GROUP) + '&format=md';
   document.getElementById('nav-html').href = '/report?g=' + encodeURIComponent(GROUP) + '&format=html';
   document.getElementById('home').hidden = true;
