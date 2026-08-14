@@ -13,6 +13,11 @@ no dependencies.
   `[HH:mm:ss]` log lines.
 - Empty dashed tiles fill the rest of the viewport, so the page always reads as
   a wall of squares with real work filling in from the top-left.
+- Draft task cards. Hit "+ new task" to define a job right in the browser: name
+  it, write the task, point it at a worktree, and edit it whenever. It sits as an
+  amber draft until you press Play, which signals the manager session to spawn
+  the agent and turn the card into a live one. The page never runs anything
+  itself, it just writes the task to disk for the manager to pick up.
 - A manager chat bar pinned to the bottom. Type to the manager session, paste
   files and clipboard screenshots (they stage as chips until you hit send),
   preview images in a modal, and clear or archive the conversation. Archived
@@ -127,10 +132,11 @@ uploads/<stamped-file>   files pasted or uploaded from the browser
 The page polls `manifest.json` and each `agents/<id>.log` every 1.5 seconds, and
 `chat.jsonl` every second, with no-store caching, so the browser always sees the
 latest bytes. The server exposes small endpoints the page uses:
-`POST /say`, `/clear`, `/upload`, `/remove`, `/archive-delete`, and
-`/archive-delete-all` (each taking `?g=<group>`), plus `GET /groups-list` (the
-home page's session list) and `GET /report?g=<group>&format=md|html` (the
-downloadable session report).
+`POST /say`, `/clear`, `/upload`, `/remove`, `/archive-delete`,
+`/archive-delete-all`, and the draft-task endpoints `/draft-create`,
+`/draft-update`, `/draft-delete`, `/draft-play` (each taking `?g=<group>`), plus
+`GET /groups-list` (the home page's session list) and
+`GET /report?g=<group>&format=md|html` (the downloadable session report).
 
 See `SKILL.md` for the full manager protocol: manifest shape, log format, chat
 roles, `[MGR]` management markers, and the agent name pool.

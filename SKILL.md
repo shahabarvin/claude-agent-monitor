@@ -105,9 +105,37 @@ printf '[%s] %s\n' "$(date +%H:%M:%S)" "reading the config file" \
 | `running`            | green  | in progress (blinking marker)   |
 | `done`               | blue   | finished OK (gets a **remove** button) |
 | `failed` / `stopped` | red    | failed or halted                |
+| `draft`              | amber  | a browser-created task not yet launched; Play sets a `playRequestedAt` signal (see Draft tasks below) |
 
 Update the agent's `status` in `manifest.json` when it transitions, and set
 `endedAt`. Only `done` cards get a remove button in the UI.
+
+## Draft tasks - the human queues, you launch
+
+The human can define a task in the browser instead of handing it to you in
+chat. The **+ new task** button (top-left nav) creates a **draft** card they can
+name, describe, give a worktree, and edit in place. A draft is inert: the page
+only writes it into `manifest.json` (`status:"draft"`) - nothing runs until the
+human presses **Play** on the card.
+
+Play stamps the card with `playRequestedAt` (an ISO timestamp) and leaves the
+status as `draft`. That stamp is the launch signal, and it is written once, so a
+second Play never queues a duplicate.
+
+Your side of the loop, as you tail the group:
+
+- **Poll `manifest.json`** for cards with `status:"draft"` that carry a
+  `playRequestedAt`. Those are the ones the human wants launched.
+- **When you find one, spawn its agent** for that `task` (in its `worktree` if
+  set), then rewrite the same card: set `status:"running"` and `startedAt`, and
+  **delete the `playRequestedAt` field** so it can't be picked up twice. From
+  there it is an ordinary agent card - stream `agents/<id>.log` as usual, and
+  post an `[MGR]` status line so the human sees the launch in the chat.
+- **Leave untouched** any draft with **no** `playRequestedAt` - the human is
+  still editing it. Never launch a draft on your own.
+
+Keep the card's `id` when you launch it: the log file is `agents/<id>.log`, and
+the page swaps the draft form for the streaming card automatically.
 
 ## 6. Manager chat protocol - `chat.jsonl`
 
