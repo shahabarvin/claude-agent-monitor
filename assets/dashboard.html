@@ -70,21 +70,40 @@
                   font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 1px;
                   padding: 1px 8px; text-transform: uppercase; }
   #chat-archive:hover { background: var(--done); color: var(--paper); }
-  .arch-row { cursor: pointer; padding: 4px 6px; border: 1px solid var(--ink); margin-bottom: 6px; font-weight: 700; }
+  .arch-row { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 6px 8px;
+              border: 1px solid var(--ink); margin-bottom: 6px; font-weight: 700; }
   .arch-row:hover { background: var(--ink); color: var(--paper); }
-  .arch-banner { background: var(--ink); color: var(--paper); padding: 3px 8px; margin-bottom: 8px;
-                 font-size: 10.5px; letter-spacing: 1px; text-transform: uppercase; }
+  .arch-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .arch-del { flex: none; background: var(--paper); color: var(--ink); border: 1px solid var(--ink);
+              cursor: pointer; font-family: var(--mono); font-size: 10px; font-weight: 700;
+              letter-spacing: 1px; padding: 2px 8px; text-transform: uppercase; }
+  .arch-del:hover { background: var(--fail); color: var(--paper); border-color: var(--fail); }
+  .arch-banner { display: flex; align-items: center; gap: 10px; background: var(--ink); color: var(--paper);
+                 padding: 4px 8px; margin-bottom: 8px; font-size: 10.5px; letter-spacing: 1px;
+                 text-transform: uppercase; }
+  .arch-hint { font-weight: 400; letter-spacing: 0; text-transform: none; color: #bbb; }
+  .arch-delall { margin-left: auto; flex: none; background: var(--paper); color: var(--ink); border: 0;
+                 cursor: pointer; font-family: var(--mono); font-size: 10px; font-weight: 700;
+                 letter-spacing: 1px; padding: 2px 8px; text-transform: uppercase; }
+  .arch-delall:hover { background: var(--fail); color: var(--paper); }
   #chat-body { display: flex; flex-direction: column; height: 55vh; }
   #chat.min #chat-body { display: none; }
-  #chat-msgs { flex: 1; overflow-y: auto; padding: 8px 10px; font-size: 11.5px; line-height: 1.7; }
+  #chat-msgs { flex: 1; overflow-y: auto; padding: 10px 12px; font-size: 12px; line-height: 1.75; }
   /* NO unicode-bidi:plaintext here - it overrides the explicit dir attribute
      and was what scrambled mixed right-to-left / Latin lines. dir=rtl wins now. */
-  #chat-msgs div { white-space: pre-wrap; word-break: break-word; margin-bottom: 4px; }
-  .m-user { font-weight: 700; color: var(--done); }
-  .m-user::before { content: "you > "; }
+  /* Each message breathes: a bit of vertical gap and a role-coloured start rule.
+     Logical border/padding (inline-start) put the accent on the reading side, so
+     right-to-left messages get it on the right. */
+  #chat-msgs .m-user, #chat-msgs .m-manager, #chat-msgs .m-status, #chat-msgs .m-typing {
+    white-space: pre-wrap; word-break: break-word; margin-bottom: 9px;
+    padding: 2px 0; padding-inline-start: 10px; border-inline-start: 3px solid #e2e2e2; }
+  #chat-msgs .m-user { font-weight: 700; color: var(--done); border-inline-start-color: var(--done); }
+  #chat-msgs .m-manager { border-inline-start-color: var(--ink); }
+  #chat-msgs .m-status { color: var(--faint); font-size: 11px; font-style: italic;
+                         border-inline-start-color: #cfcfcf; }
+  .m-user::before { content: "you > "; color: var(--done); }
   .m-manager::before { content: "mgr > "; font-weight: 700; }
-  .m-status { color: var(--faint); font-size: 10.5px; }
-  .m-status::before { content: "\00B7 "; }
+  .m-status::before { content: "\00B7 "; font-style: normal; }
   .m-typing { color: var(--faint); font-weight: 700; letter-spacing: 3px; animation: tblink .9s steps(1) infinite; }
   @keyframes tblink { 50% { opacity: .25; } }
   #chat-form { display: flex; border-top: 2px solid var(--ink); }
@@ -119,10 +138,67 @@
     font-family: var(--mono); font-weight: 700; font-size: 11px; letter-spacing: 1px;
     text-transform: uppercase; padding: 6px 18px; cursor: pointer; text-decoration: none; }
   #imgmodal .bar a:hover, #imgmodal .bar button:hover { background: var(--ink); color: var(--paper); }
+
+  /* top-left nav on the group view - home link + report downloads (mirrors .conn) */
+  .nav { position: fixed; top: 0; left: 0; z-index: 10; background: var(--ink); color: var(--paper);
+         font-size: 10px; padding: 2px 8px; letter-spacing: 1px; text-transform: uppercase;
+         display: flex; gap: 12px; }
+  .nav a { color: var(--paper); text-decoration: none; }
+  .nav a:hover { color: var(--run); }
+  .nav .sep { color: #888; }
+
+  /* home / reconnect view - the list of sessions when opened without ?g= */
+  #home { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+  .home-title { font-size: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+                border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 4px; }
+  .home-sub { color: var(--faint); font-size: 11px; margin-bottom: 18px; }
+  .home-row { display: flex; align-items: center; gap: 12px; border: 2px solid var(--ink);
+              margin-bottom: 8px; padding: 0; }
+  .home-open { flex: 1; display: flex; align-items: center; gap: 14px; padding: 12px 14px;
+               text-decoration: none; color: var(--ink); min-width: 0; }
+  .home-open:hover { background: var(--ink); color: var(--paper); }
+  .home-name { font-weight: 700; font-size: 15px; text-transform: uppercase; letter-spacing: .5px;
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 120px; }
+  .home-counts { display: flex; gap: 6px; flex: none; }
+  .pill { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+          padding: 1px 6px; border: 1px solid currentColor; }
+  .pill.run { color: var(--run); } .pill.done { color: var(--done); } .pill.fail { color: var(--fail); }
+  .pill.none { color: var(--faint); }
+  .home-open:hover .pill { border-color: var(--paper); }
+  .home-time { margin-left: auto; font-size: 11px; color: var(--faint); flex: none; white-space: nowrap; }
+  .home-open:hover .home-time { color: var(--paper); }
+  .home-dl { display: flex; gap: 0; flex: none; border-left: 2px solid var(--ink); }
+  .home-dl a { padding: 12px 10px; font-size: 10px; font-weight: 700; letter-spacing: 1px;
+               text-transform: uppercase; text-decoration: none; color: var(--ink); }
+  .home-dl a:hover { background: var(--done); color: var(--paper); }
+  .home-empty { color: var(--faint); padding: 20px 0; }
+  #home-new { display: flex; margin-top: 20px; border: 2px solid var(--ink); }
+  #home-new input { flex: 1; border: 0; outline: 0; font-family: var(--mono); font-size: 13px;
+                    padding: 10px 12px; background: var(--paper); color: var(--ink); }
+  #home-new button { background: var(--ink); color: var(--paper); border: 0; cursor: pointer;
+                     font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px;
+                     padding: 0 18px; text-transform: uppercase; }
+  #home-new button:hover { background: var(--run); color: var(--ink); }
 </style>
 </head>
 <body>
+<nav class="nav" id="nav" hidden>
+  <a href="/" title="all sessions">home</a><span class="sep">·</span>
+  <a id="nav-md" href="#">report.md</a><span class="sep">·</span>
+  <a id="nav-html" href="#">report.html</a>
+</nav>
 <span class="conn" id="conn">connecting</span>
+
+<section id="home" hidden>
+  <div class="home-title">agent monitor</div>
+  <div class="home-sub">sessions on this server - pick one to jump back in, or start a new group</div>
+  <div id="home-list"></div>
+  <form id="home-new" onsubmit="return openNewGroup(event)">
+    <input id="home-new-input" placeholder="new group name (letters, numbers, - _ )" autocomplete="off">
+    <button type="submit">open</button>
+  </form>
+</section>
+
 <div id="grid"><div class="ph" id="ph">Let's do some work here...</div></div>
 
 <div id="chat" class="min">
@@ -152,9 +228,13 @@
 
 <script>
 // Each session = one group (its own manifest/agents/chat). ?g=<name>
-const GROUP = (new URLSearchParams(location.search).get('g') || 'main').replace(/[^a-zA-Z0-9_-]/g, '') || 'main';
-document.title = 'agent monitor · ' + GROUP;
+// With no usable ?g= the page is the HOME / reconnect view: a list of every
+// session on the server (see initHome at the bottom). Same sanitizing as server.
+const rawG = new URLSearchParams(location.search).get('g');
+const HOME = !rawG || !rawG.replace(/[^a-zA-Z0-9_-]/g, '');
+const GROUP = (rawG || 'main').replace(/[^a-zA-Z0-9_-]/g, '') || 'main';
 const G = 'groups/' + GROUP + '/';
+document.title = HOME ? 'agent monitor · sessions' : 'agent monitor · ' + GROUP;
 
 const grid = document.getElementById('grid');
 const conn = document.getElementById('conn');
@@ -272,9 +352,11 @@ async function tick() {
   }
   fillPlaceholders();
 }
-tick();
-setInterval(tick, 1500);
-fillPlaceholders();
+if (!HOME) {
+  tick();
+  setInterval(tick, 1500);
+  fillPlaceholders();
+}
 
 // ── manager chat ─────────────────────────────────────────────────────────────
 const chatBox = document.getElementById('chat');
@@ -439,14 +521,17 @@ function renderChat() {
   const { archives, current } = chatSegments();
 
   if (chatView === 'list') {
-    let html = '<div class="arch-banner">archives - click one to read · archive button returns to live</div>';
+    const escT = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    let html = '<div class="arch-banner">archives' +
+      '<span class="arch-hint">click a row to read · archive button returns to live</span>' +
+      (archives.length ? '<button class="arch-delall" type="button" data-delall="1">delete all</button>' : '') +
+      '</div>';
     if (!archives.length) html += '<div class="m-status">no archives yet</div>';
     archives.map((seg, i) => ({ seg, i })).reverse().forEach(({ seg, i }) => {
-      const d = document.createElement('div');
-      d.className = 'arch-row';
-      d.dataset.arch = i;
-      d.textContent = `#${i + 1} · ${seg.length} messages · ${fmtRange(seg)}`;
-      html += d.outerHTML;
+      html += '<div class="arch-row" data-arch="' + i + '">' +
+        '<span class="arch-label">#' + (i + 1) + ' · ' + seg.length + ' messages · ' + escT(fmtRange(seg)) + '</span>' +
+        '<button class="arch-del" type="button" data-del="' + i + '">delete</button>' +
+      '</div>';
     });
     chatMsgs.innerHTML = html;
     return;
@@ -499,16 +584,122 @@ function toggleArchives() {
   renderChat();
 }
 
-// Archive rows are re-rendered often - delegate the clicks.
+// Delete one archived session, or all of them - the server rewrites chat.jsonl
+// (the live chat is always kept). Re-poll so the list reflects the new state.
+async function deleteArchive(i) {
+  if (isNaN(i)) return;
+  if (!confirm('Delete archive #' + (i + 1) + '? This removes it permanently.')) return;
+  try { await fetch('/archive-delete?g=' + GROUP + '&index=' + i, { method: 'POST' }); } catch (e) {}
+  lastChatText = ''; await pollChat();
+}
+async function deleteAllArchives() {
+  if (!confirm('Delete ALL archives? The current chat is kept. This cannot be undone.')) return;
+  try { await fetch('/archive-delete-all?g=' + GROUP, { method: 'POST' }); } catch (e) {}
+  lastChatText = ''; await pollChat();
+}
+
+// Archive rows and their buttons are re-rendered often - delegate the clicks.
 chatMsgs.addEventListener('click', (e) => {
+  if (e.target.closest('.arch-delall')) { deleteAllArchives(); return; }
+  const del = e.target.closest('.arch-del');
+  if (del) { deleteArchive(parseInt(del.dataset.del, 10)); return; }
   const row = e.target.closest('.arch-row');
   if (!row) return;
   chatView = parseInt(row.dataset.arch, 10);
   renderChat();
 });
 
-pollChat();
-setInterval(pollChat, 1000);
+if (!HOME) {
+  pollChat();
+  setInterval(pollChat, 1000);
+}
+
+// ── home / reconnect view ────────────────────────────────────────────────────
+// Shown when the page is opened without a group. Lists every session on the
+// server so reopening the browser (or VSCode) at the root lands you on a menu
+// of live and past runs to jump back into.
+function relTime(iso) {
+  if (!iso) return 'no activity';
+  const then = new Date(iso).getTime();
+  if (isNaN(then)) return 'no activity';
+  const sec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (sec < 45) return 'just now';
+  const m = Math.floor(sec / 60);
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  const d = Math.floor(h / 24);
+  return d + 'd ago';
+}
+
+function homeCountsHtml(gr) {
+  const p = [];
+  if (gr.running) p.push('<span class="pill run">' + gr.running + ' run</span>');
+  if (gr.done) p.push('<span class="pill done">' + gr.done + ' done</span>');
+  if (gr.failed) p.push('<span class="pill fail">' + gr.failed + ' fail</span>');
+  if (!p.length) p.push('<span class="pill none">' + (gr.agentCount || 0) + ' agents</span>');
+  return p.join('');
+}
+
+function renderHome(groups) {
+  const list = document.getElementById('home-list');
+  if (!groups.length) {
+    list.innerHTML = '<div class="home-empty">no sessions yet - start one below</div>';
+    return;
+  }
+  list.innerHTML = groups.map((gr) => {
+    const q = encodeURIComponent(gr.name);
+    const nm = gr.name.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    return '<div class="home-row">' +
+      '<a class="home-open" href="?g=' + q + '">' +
+        '<span class="home-name">' + nm + '</span>' +
+        '<span class="home-counts">' + homeCountsHtml(gr) + '</span>' +
+        '<span class="home-time">' + relTime(gr.lastActivity) + '</span>' +
+      '</a>' +
+      '<span class="home-dl">' +
+        '<a href="/report?g=' + q + '&format=md" title="download markdown report">md</a>' +
+        '<a href="/report?g=' + q + '&format=html" title="download html report">html</a>' +
+      '</span>' +
+    '</div>';
+  }).join('');
+}
+
+async function pollHome() {
+  try {
+    const r = await fetch('/groups-list?t=' + Date.now());
+    if (!r.ok) return;
+    renderHome(await r.json());
+  } catch (e) { /* server down */ }
+}
+
+function openNewGroup(e) {
+  e.preventDefault();
+  const v = document.getElementById('home-new-input').value.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (v) location.search = '?g=' + encodeURIComponent(v);
+  return false;
+}
+
+function initHome() {
+  document.getElementById('nav').hidden = true;
+  document.getElementById('conn').style.display = 'none';
+  document.getElementById('grid').style.display = 'none';
+  document.getElementById('chat').style.display = 'none';
+  document.getElementById('home').hidden = false;
+  pollHome();
+  setInterval(pollHome, 3000);
+  document.getElementById('home-new-input').focus();
+}
+
+if (HOME) {
+  initHome();
+} else {
+  // group view: reveal the top-left nav and point its report links at this group
+  const nav = document.getElementById('nav');
+  nav.hidden = false;
+  document.getElementById('nav-md').href = '/report?g=' + encodeURIComponent(GROUP) + '&format=md';
+  document.getElementById('nav-html').href = '/report?g=' + encodeURIComponent(GROUP) + '&format=html';
+  document.getElementById('home').hidden = true;
+}
 </script>
 </body>
 </html>
