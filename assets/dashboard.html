@@ -320,11 +320,21 @@ function manifestOrderIds(agents) {
 }
 
 // Move the real cards into `orderIds` order, always ahead of the placeholders.
-// insertBefore on a node already in place is a no-op, so this is cheap to run
-// every tick and never disturbs stream scroll or input focus.
+// insertBefore detaches the node before re-inserting it, so even a "same spot"
+// move BLURS a focused input inside that card and jars stream scroll. So this
+// runs only when it must, behind two guards.
 function applyCardOrder(orderIds) {
+  // 1. Never fight the user: while a draft input inside the grid has focus,
+  //    reordering its card would drop the caret mid-word. Leave the grid alone
+  //    until focus moves out.
+  const active = document.activeElement;
+  if (active && grid.contains(active) &&
+      (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+  // 2. If the DOM is already in the wanted order, touch nothing at all.
+  const want = orderIds.filter((id) => cards.has(id));
+  if (domCardIds().join(',') === want.join(',')) return;
   const firstPh = grid.querySelector('.ph');
-  for (const id of orderIds) {
+  for (const id of want) {
     const entry = cards.get(id);
     if (entry && entry.el && entry.el.parentNode === grid) grid.insertBefore(entry.el, firstPh);
   }
