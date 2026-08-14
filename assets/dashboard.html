@@ -7,7 +7,7 @@
 <style>
   :root {
     --ink: #000; --paper: #fff; --dim: #444; --faint: #888;
-    --run: #16c73c; --fail: #f01818; --done: #1e5bff;
+    --run: #16c73c; --fail: #f01818; --done: #1e5bff; --draft: #ffb300;
     --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0 !important; }
@@ -25,6 +25,8 @@
   .card-head.running { background: var(--run); color: var(--ink); }
   .card-head.failed, .card-head.stopped { background: var(--fail); color: var(--paper); }
   .card-head.done { background: var(--done); color: var(--paper); }
+  .card-head.draft, .card-head.queued { background: var(--draft); color: var(--ink); }
+  .card-head.queued .status::before { content: "\25A0 "; animation: blink 1s steps(1) infinite; }
   .name { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .5px;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .status { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; flex: none; }
@@ -53,6 +55,38 @@
   /* the always-present empty slot - where the next agent will land */
   .ph { border: 2px dashed var(--ink); height: 460px; display: flex; align-items: center;
         justify-content: center; color: #c6c6c6; letter-spacing: 1px; font-size: 13px; }
+
+  /* draft cards - defined in the browser, launched with Play. Dashed border and
+     amber head mark them as not-yet-running. No log stream; an editable form. */
+  .card.draft { border-style: dashed; }
+  .draft-body { flex: 1; padding: 8px 10px; overflow-y: auto; min-height: 0;
+                display: flex; flex-direction: column; gap: 3px; }
+  .d-queued { background: var(--ink); color: var(--draft); font-weight: 700; font-size: 10.5px;
+              letter-spacing: 1.5px; text-transform: uppercase; text-align: center;
+              padding: 5px 8px; margin-bottom: 6px; }
+  .d-lbl { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+           color: var(--faint); margin-top: 5px; }
+  .d-opt { color: #c6c6c6; font-weight: 400; }
+  .draft-body input, .draft-body textarea { font-family: var(--mono); font-size: 12px;
+           border: 2px solid var(--ink); background: var(--paper); color: var(--ink);
+           padding: 5px 7px; outline: 0; width: 100%; }
+  .draft-body textarea { resize: vertical; min-height: 84px; line-height: 1.5; }
+  .draft-body input:disabled, .draft-body textarea:disabled { border-color: #d6d6d6;
+           color: #333; background: #fafafa; }
+  .card.draft.editing .draft-body input:not(:disabled),
+  .card.draft.editing .draft-body textarea:not(:disabled) { border-color: var(--draft); }
+  .draft-actions { display: flex; border-top: 2px solid var(--ink); flex: none; }
+  .d-btn { flex: 1; background: var(--paper); color: var(--ink); border: 0;
+           border-right: 2px solid var(--ink); cursor: pointer; font-family: var(--mono);
+           font-size: 11px; font-weight: 700; letter-spacing: 1px; padding: 9px 0; text-transform: uppercase; }
+  .d-btn:last-child { border-right: 0; }
+  .d-btn:hover { background: var(--ink); color: var(--paper); }
+  .d-play:hover { background: var(--draft); color: var(--ink); }
+  .d-del:hover { background: var(--fail); color: var(--paper); }
+  .d-btn:disabled { color: #c6c6c6; cursor: default; }
+  .d-btn:disabled:hover { background: var(--paper); color: #c6c6c6; }
+  .nav a#nav-new { color: var(--draft); font-weight: 700; }
+  .nav a#nav-new:hover { color: var(--paper); }
 
   /* manager chat - minimized: bottom-right bar · open: full width, taller */
   #chat { position: fixed; bottom: 0; left: 0; right: 0; background: var(--paper);
@@ -184,6 +218,7 @@
 <body>
 <nav class="nav" id="nav" hidden>
   <a href="/" title="all sessions">home</a><span class="sep">·</span>
+  <a id="nav-new" href="#" title="create a draft task" onclick="return newDraft(event)">+ new task</a><span class="sep">·</span>
   <a id="nav-md" href="#">report.md</a><span class="sep">·</span>
   <a id="nav-html" href="#">report.html</a>
 </nav>
@@ -258,7 +293,11 @@ async function removeAgent(id) {
 }
 
 function ensureCard(a) {
-  if (cards.has(a.id)) return cards.get(a.id);
+  const existing = cards.get(a.id);
+  if (existing && existing.kind === 'agent') return existing;
+  // A draft the manager just launched keeps its id but becomes a real agent -
+  // drop the draft form and build the streaming card in its place.
+  if (existing) { existing.el.remove(); cards.delete(a.id); }
   const el = document.createElement('div');
   el.className = 'card';
   el.innerHTML = `
@@ -269,11 +308,153 @@ function ensureCard(a) {
     <div class="wt"></div>
     <div class="now"></div>
     <div class="stream"></div>`;
-  const entry = { el, streamEl: el.querySelector('.stream'), lastText: '' };
+  const entry = { kind: 'agent', el, streamEl: el.querySelector('.stream'), lastText: '' };
   cards.set(a.id, entry);
   // Cards land BEFORE the placeholders, so empty slots trail the real work.
   grid.insertBefore(el, grid.querySelector('.ph'));
   return entry;
+}
+
+// ── draft cards ───────────────────────────────────────────────────────────────
+// A draft is a task the human writes in the browser and launches with Play.
+// The page only edits the manifest on disk; the manager session reads it and
+// spawns the agent. Ids of drafts to open straight into edit mode (freshly
+// created ones) are held here until their card is built.
+const autoEditIds = new Set();
+
+function makeDraftCardEl() {
+  const el = document.createElement('div');
+  el.className = 'card draft';
+  el.innerHTML = `
+    <div class="card-head draft">
+      <span class="name">DRAFT</span><span class="status">draft</span>
+    </div>
+    <div class="draft-body">
+      <div class="d-queued" hidden>queued - waiting for manager</div>
+      <span class="d-lbl">name</span>
+      <input class="d-name" type="text" maxlength="120" autocomplete="off" placeholder="agent name (optional)" disabled>
+      <span class="d-lbl">task</span>
+      <textarea class="d-task" maxlength="4000" placeholder="what should this agent do?" disabled></textarea>
+      <span class="d-lbl">worktree <span class="d-opt">(optional)</span></span>
+      <input class="d-wt" type="text" maxlength="500" autocomplete="off" placeholder="/abs/path or blank" disabled>
+    </div>
+    <div class="draft-actions">
+      <button class="d-btn d-edit" type="button">edit</button>
+      <button class="d-btn d-play" type="button">play</button>
+      <button class="d-btn d-del" type="button">delete</button>
+    </div>`;
+  return el;
+}
+
+// Flip a draft card between read-only and editing: toggles the inputs and the
+// edit/save label. Never touches values, so it is safe to call every tick.
+function applyDraftEditing(entry) {
+  const el = entry.el;
+  const dis = !entry.editing;
+  el.querySelector('.d-name').disabled = dis;
+  el.querySelector('.d-task').disabled = dis;
+  el.querySelector('.d-wt').disabled = dis;
+  el.querySelector('.d-edit').textContent = entry.editing ? 'save' : 'edit';
+  el.classList.toggle('editing', entry.editing);
+}
+
+async function saveDraft(id, entry) {
+  const el = entry.el;
+  const payload = {
+    name: el.querySelector('.d-name').value,
+    task: el.querySelector('.d-task').value,
+    worktree: el.querySelector('.d-wt').value,
+  };
+  try {
+    await fetch('/draft-update?g=' + GROUP + '&id=' + encodeURIComponent(id),
+      { method: 'POST', body: JSON.stringify(payload) });
+  } catch (e) {}
+}
+
+function wireDraftCard(entry, id) {
+  const el = entry.el;
+  el.querySelector('.d-edit').onclick = async () => {
+    if (!entry.editing) {                 // enter edit mode
+      entry.editing = true;
+      applyDraftEditing(entry);
+      el.querySelector('.d-name').focus();
+    } else {                              // save
+      entry.editing = false;
+      applyDraftEditing(entry);
+      await saveDraft(id, entry);
+      tick();
+    }
+  };
+  el.querySelector('.d-play').onclick = async () => {
+    if (entry.editing) {                  // persist edits before launching
+      entry.editing = false;
+      applyDraftEditing(entry);
+      await saveDraft(id, entry);
+    }
+    try { await fetch('/draft-play?g=' + GROUP + '&id=' + encodeURIComponent(id), { method: 'POST' }); } catch (e) {}
+    tick();
+  };
+  el.querySelector('.d-del').onclick = async () => {
+    if (!confirm('Delete this draft task?')) return;
+    removedLocal.add(id);
+    entry.el.remove(); cards.delete(id);
+    fillPlaceholders();
+    try { await fetch('/draft-delete?g=' + GROUP + '&id=' + encodeURIComponent(id), { method: 'POST' }); } catch (e) {}
+  };
+}
+
+function renderDraftCard(entry, a) {
+  const el = entry.el;
+  const queued = !!a.playRequestedAt;
+  el.querySelector('.d-queued').hidden = !queued;
+  el.querySelector('.card-head').className = 'card-head ' + (queued ? 'queued' : 'draft');
+  el.querySelector('.status').textContent = queued ? 'queued' : 'draft';
+  el.querySelector('.name').textContent = a.name || 'DRAFT';
+  // Never overwrite what the human is typing.
+  if (!entry.editing) {
+    el.querySelector('.d-name').value = a.name || '';
+    el.querySelector('.d-task').value = a.task || '';
+    el.querySelector('.d-wt').value = a.worktree || '';
+  }
+  const editB = el.querySelector('.d-edit');
+  const playB = el.querySelector('.d-play');
+  if (queued) {
+    // Handed to the manager - lock edit/play but keep delete as an escape hatch.
+    entry.editing = false;
+    applyDraftEditing(entry);
+    editB.disabled = true;
+    playB.disabled = true;
+    playB.textContent = 'queued';
+  } else {
+    editB.disabled = false;
+    playB.disabled = false;
+    playB.textContent = 'play';
+    applyDraftEditing(entry);
+  }
+}
+
+function syncDraftCard(a) {
+  let entry = cards.get(a.id);
+  if (entry && entry.kind !== 'draft') { entry.el.remove(); cards.delete(a.id); entry = null; }
+  if (!entry) {
+    const el = makeDraftCardEl();
+    entry = { kind: 'draft', el, editing: false };
+    cards.set(a.id, entry);
+    grid.insertBefore(el, grid.querySelector('.ph'));
+    wireDraftCard(entry, a.id);
+    if (autoEditIds.has(a.id)) { autoEditIds.delete(a.id); entry.editing = true; }
+  }
+  renderDraftCard(entry, a);
+}
+
+async function newDraft(e) {
+  if (e) e.preventDefault();
+  try {
+    const r = await fetch('/draft-create?g=' + GROUP, { method: 'POST', body: JSON.stringify({}) });
+    if (r.ok) { const d = await r.json().catch(() => null); if (d && d.id) autoEditIds.add(d.id); }
+  } catch (err) {}
+  tick();
+  return false;
 }
 
 // Keep enough empty slots that the grid always covers the viewport - the page
@@ -339,6 +520,7 @@ async function tick() {
     conn.className = 'conn';
     for (const a of (man.agents || [])) {
       if (removedLocal.has(a.id)) continue;
+      if (a.status === 'draft') { syncDraftCard(a); continue; }
       const entry = ensureCard(a);
       renderMeta(entry, a);
       try {
