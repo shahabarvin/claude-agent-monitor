@@ -13,6 +13,10 @@ no dependencies.
   `[HH:mm:ss]` log lines.
 - Empty dashed tiles fill the rest of the viewport, so the page always reads as
   a wall of squares with real work filling in from the top-left.
+- Drag to reorder. Grab a card by its head and drop it where you want it. The
+  arrangement is saved per card, so it survives the 1.5s poll and a page refresh,
+  and a background status change never snaps the layout back. New agents still
+  land at the end.
 - Draft task cards. Hit "+ new task" to define a job right in the browser: name
   it, write the task, point it at a worktree, and edit it whenever. It sits as an
   amber draft until you press Play, which signals the manager session to spawn
@@ -123,20 +127,26 @@ Each session is a group (`?g=<name>`). Everything for a group lives under
 `<AGENT_MONITOR_DIR>/<group>/`:
 
 ```
-manifest.json            the roster: [{ id, name, task, worktree, status, startedAt, endedAt }]
+manifest.json            the roster: [{ id, name, task, worktree, status, startedAt, endedAt, order }]
 agents/<id>.log          per-agent progress stream, one "[HH:mm:ss] message" line per step
 chat.jsonl               append-only two-way chat (roles: user / manager / status / typing / clear)
 uploads/<stamped-file>   files pasted or uploaded from the browser
 ```
 
+`order` is an optional integer the drag-reorder writes onto each card; the page
+sorts cards by it and leaves cards without one at the end, so a manifest you
+write by hand needs no `order` field.
+
 The page polls `manifest.json` and each `agents/<id>.log` every 1.5 seconds, and
 `chat.jsonl` every second, with no-store caching, so the browser always sees the
 latest bytes. The server exposes small endpoints the page uses:
-`POST /say`, `/clear`, `/upload`, `/remove`, `/archive-delete`,
-`/archive-delete-all`, and the draft-task endpoints `/draft-create`,
-`/draft-update`, `/draft-delete`, `/draft-play` (each taking `?g=<group>`), plus
-`GET /groups-list` (the home page's session list) and
-`GET /report?g=<group>&format=md|html` (the downloadable session report).
+`POST /say`, `/clear`, `/upload`, `/remove`, `/reorder` (saves the drag order as
+an `order` int per card, re-reading the manifest right before writing so a
+concurrent manager write is preserved), `/archive-delete`, `/archive-delete-all`,
+and the draft-task endpoints `/draft-create`, `/draft-update`, `/draft-delete`,
+`/draft-play` (each taking `?g=<group>`), plus `GET /groups-list` (the home
+page's session list) and `GET /report?g=<group>&format=md|html` (the downloadable
+session report).
 
 See `SKILL.md` for the full manager protocol: manifest shape, log format, chat
 roles, `[MGR]` management markers, and the agent name pool.

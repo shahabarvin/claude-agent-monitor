@@ -73,6 +73,11 @@ Before (or as) you launch a background agent, add it to `manifest.json`:
 - `worktree` - absolute path if the agent runs in its own git worktree, else
   `""`.
 - `startedAt` / `endedAt` - ISO timestamps; set `endedAt` when it finishes.
+- `order` - **optional integer, written by the browser when the human drags a
+  card to rearrange the grid.** You never set it, but when you rewrite a card
+  (status flip, `endedAt`, etc.) keep whatever `order` value is already on it -
+  read-modify-write the manifest, don't rebuild agents from scratch, or the human's
+  arrangement is lost. New cards need no `order`; the page sorts them to the end.
 
 Append to the `agents` array - never overwrite other agents' entries. Write
 the whole file back as valid JSON each time.
@@ -272,7 +277,7 @@ off or archiving a run outside the dashboard.
 
 ```
 <AGENT_MONITOR_DIR>/<group>/
-  manifest.json            # the agent roster (you write)
+  manifest.json            # the agent roster (you write; `order` is set by browser drag - preserve it)
   agents/<id>.log          # per-agent [HH:mm:ss] progress stream (you/agents write)
   chat.jsonl               # two-way manager chat (append-only)
   uploads/<stamped-file>   # files the human pastes/uploads
