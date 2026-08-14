@@ -147,7 +147,57 @@ $line = @{ role="manager"; text="on it - spinning up two agents"; ts=$ts } | Con
 Add-Content -Path "$env:AGENT_MONITOR_DIR/<group>/chat.jsonl" -Value $line -Encoding utf8
 ```
 
-## 7. Agent name pool
+## 7. Autonomous tech-lead mode
+
+The human can hand you a whole goal instead of a single task and ask you to run
+it to completion without babysitting. In that mode you act as the tech lead:
+decompose the goal, spawn agents, review and integrate their work, verify, and
+keep going until the goal is met.
+
+**How it actually keeps running.** A skill cannot loop on its own; the loop is a
+Claude Code primitive. Start the run with one of these (the human types it, or
+you suggest it):
+
+```text
+/goal <the goal is met> or stop after <N> iterations
+```
+
+`/goal` re-checks the condition after every turn with a small fast model. While
+the condition is false, you continue automatically without waiting for a prompt.
+When it is true, the goal clears and the run ends. The `or stop after N` clause
+is your safety cap so a run can never spin forever. Use `/loop <prompt>` instead
+when the work is poll-shaped (waiting on a build, a deploy, a queue) rather than
+end-state-shaped.
+
+**Operating rules while autonomous:**
+
+- **Keep momentum.** Proceed on any reversible decision without asking. Only
+  stop for a genuinely destructive or irreversible action (deleting data,
+  spending money, publishing something public, an irreversible migration).
+- **If you must ask and get no answer, do not stall.** Post the question as a
+  `manager` chat line, state the assumption you will proceed on, and continue:
+  `"Assuming X unless you say otherwise - continuing."` Momentum beats a blocked
+  queue; the human can correct you from the chat bar at any time.
+- **One agent per decomposed piece**, isolated in a worktree when they write in
+  parallel. Review every agent's result yourself before integrating - never
+  merge on an agent's self-report alone. Run the project's tests/guards after
+  each integration.
+- **Narrate to the board.** Register a card per agent, keep `[MGR]` status lines
+  flowing, and post short progress notes to the chat so the human can watch the
+  run unfold and step in.
+- **Checkpoint often.** After each integrated piece, commit, and drop a
+  downloadable report link (`/report?g=<group>&format=md`) so there is always an
+  up-to-date record of what the run has done and what remains.
+- **Define "done" concretely** at the start (the acceptance condition you put in
+  `/goal`), so both you and the evaluator agree on when to stop.
+
+**Reconnecting to a run.** Everything lives on disk, so a run survives the
+browser or editor closing. Reopen the session with `claude --continue` (or
+`claude --resume`); an active `/goal` is restored for up to 7 days. The server
+is detached, so the dashboard keeps serving; if it was stopped, relaunch it and
+open the home page (`/`) to jump back into the group.
+
+## 8. Agent name pool
 
 Name agents from this pool (in order); on reuse append a number
 (`Castiel` -> `Castiel-2`, id `castiel2`):
@@ -161,7 +211,7 @@ Benjamin Rachel   Ezekiel  Metatron
 `id` = lowercase name with no dash (`castiel2`); `name` = display form
 (`Castiel-2`).
 
-## 8. Removing & archiving
+## 9. Removing & archiving
 
 - When the human clicks **remove** on a `done` card, the server drops that
   agent from `manifest.json` (the log file is kept). You can also remove an
