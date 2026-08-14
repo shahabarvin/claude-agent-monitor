@@ -95,6 +95,42 @@ function writeChat(gdir, text) {
     try { fs.writeFileSync(chatPath, text); } finally { try { fs.unlinkSync(tmp); } catch (e2) {} }
   }
 }
+
+// Atomic write: stage a temp file then rename it onto the target, so a reader
+// (the page polls every 1.5s) never catches a half-written manifest. Windows can
+// refuse to rename over a file another process holds open, so fall back to an
+// in-place write on failure - the same pattern writeChat uses above.
+function writeFileAtomic(file, text) {
+  const tmp = file + '.tmp-' + process.pid + '-' + Date.now();
+  try {
+    fs.writeFileSync(tmp, text);
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    try { fs.writeFileSync(file, text); } finally { try { fs.unlinkSync(tmp); } catch (e2) {} }
+  }
+}
+// Read a group's manifest, always returning an object with an agents array.
+function readManifest(groupDir) {
+  const man = readJson(path.join(groupDir, 'manifest.json'));
+  if (man && Array.isArray(man.agents)) return man;
+  return { agents: [] };
+}
+// Write a group's manifest back atomically (creates the group dir if needed).
+function writeManifest(groupDir, man) {
+  fs.mkdirSync(groupDir, { recursive: true });
+  writeFileAtomic(path.join(groupDir, 'manifest.json'), JSON.stringify(man, null, 2));
+}
+// Card ids are lowercase [a-z0-9_-]; derive one from the name, else fall back.
+function slugifyId(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
+function uniqueId(base, existing) {
+  const b = base || 'draft';
+  if (!existing.has(b)) return b;
+  let n = 2;
+  while (existing.has(b + n)) n++;
+  return b + n;
+}
 function durationStr(startIso, endIso) {
   if (!startIso) return '';
   const s = new Date(startIso).getTime();
@@ -208,7 +244,7 @@ function buildReportMd(name, agents, chat) {
 
 const REPORT_CSS = `
   :root { --ink:#000; --paper:#fff; --dim:#444; --faint:#888;
-          --run:#16c73c; --fail:#f01818; --done:#1e5bff;
+          --run:#16c73c; --fail:#f01818; --done:#1e5bff; --draft:#ffb300;
           --mono: ui-monospace, "Cascadia Mono", Consolas, monospace; }
   * { box-sizing:border-box; margin:0; padding:0; }
   body { background:var(--paper); color:var(--ink); font-family:var(--mono);
@@ -224,6 +260,7 @@ const REPORT_CSS = `
   .agent.running .ahead { background:var(--run); color:var(--ink); }
   .agent.done .ahead { background:var(--done); color:var(--paper); }
   .agent.failed .ahead, .agent.stopped .ahead { background:var(--fail); color:var(--paper); }
+  .agent.draft .ahead, .agent.queued .ahead { background:var(--draft); color:var(--ink); }
   .aname { font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
   .astatus { margin-left:auto; font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; }
   table.kv { border-collapse:collapse; width:100%; }
@@ -374,6 +411,95 @@ http.createServer((req, res) => {
       } catch (e) {
         res.writeHead(500); return res.end('manifest error');
       }
+    }
+
+    // ── draft task cards ──────────────────────────────────────────────────────
+    // Drafts are cards the human defines in the browser and launches with a Play
+    // button. The page never runs an agent; it only writes intent to the
+    // manifest, which the manager session reads. A draft carries status:'draft'
+    // and, once played, a playRequestedAt stamp the manager treats as "spawn me".
+
+    // POST /draft-create?g=<group> - body { name, task, worktree } - append a new
+    // draft card with a generated lowercase-safe id.
+    if (req.method === 'POST' && urlPath === '/draft-create') {
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 8192) req.destroy(); });
+      req.on('end', () => {
+        try {
+          let d = {};
+          try { d = JSON.parse(body || '{}'); } catch (e) { d = {}; }
+          const name = String(d.name || '').slice(0, 120).trim();
+          const task = String(d.task || '').slice(0, 4000).trim();
+          const worktree = String(d.worktree || '').slice(0, 500).trim();
+          const man = readManifest(groupDir);
+          const existing = new Set(man.agents.map((a) => a.id));
+          const base = slugifyId(name) || ('draft-' + Math.random().toString(36).slice(2, 8));
+          const id = uniqueId(base, existing);
+          man.agents.push({
+            id, name, task, worktree,
+            status: 'draft', createdAt: new Date().toISOString(), endedAt: null,
+          });
+          writeManifest(groupDir, man);
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ ok: true, id }));
+        } catch (e) { res.writeHead(500); res.end('draft-create error'); }
+      });
+      return;
+    }
+
+    // POST /draft-update?g=<group>&id=<id> - body { name?, task?, worktree? } -
+    // edit a draft. Only permitted while the card is still a draft.
+    if (req.method === 'POST' && urlPath === '/draft-update') {
+      const id = q.get('id');
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 8192) req.destroy(); });
+      req.on('end', () => {
+        try {
+          let d = {};
+          try { d = JSON.parse(body || '{}'); } catch (e) { d = {}; }
+          const man = readManifest(groupDir);
+          const a = man.agents.find((x) => x.id === id);
+          if (!a || a.status !== 'draft') { res.writeHead(404, { 'Cache-Control': 'no-store' }); return res.end('no draft'); }
+          if (d.name !== undefined) a.name = String(d.name).slice(0, 120).trim();
+          if (d.task !== undefined) a.task = String(d.task).slice(0, 4000).trim();
+          if (d.worktree !== undefined) a.worktree = String(d.worktree).slice(0, 500).trim();
+          writeManifest(groupDir, man);
+          res.writeHead(200, { 'Cache-Control': 'no-store' }); res.end('ok');
+        } catch (e) { res.writeHead(500); res.end('draft-update error'); }
+      });
+      return;
+    }
+
+    // POST /draft-delete?g=<group>&id=<id> - remove a draft card.
+    if (req.method === 'POST' && urlPath === '/draft-delete') {
+      const id = q.get('id');
+      try {
+        const man = readManifest(groupDir);
+        const a = man.agents.find((x) => x.id === id);
+        if (!a || a.status !== 'draft') { res.writeHead(404, { 'Cache-Control': 'no-store' }); return res.end('no draft'); }
+        man.agents = man.agents.filter((x) => x.id !== id);
+        writeManifest(groupDir, man);
+        res.writeHead(200, { 'Cache-Control': 'no-store' }); return res.end('ok');
+      } catch (e) { res.writeHead(500); return res.end('draft-delete error'); }
+    }
+
+    // POST /draft-play?g=<group>&id=<id> - stamp playRequestedAt so the manager
+    // knows to spawn this now. Status stays 'draft' - the manager flips it to
+    // 'running' when it actually launches. Idempotent: the stamp is written only
+    // once, so a second Play press never queues a duplicate spawn.
+    if (req.method === 'POST' && urlPath === '/draft-play') {
+      const id = q.get('id');
+      try {
+        const man = readManifest(groupDir);
+        const a = man.agents.find((x) => x.id === id);
+        if (!a || a.status !== 'draft') { res.writeHead(404, { 'Cache-Control': 'no-store' }); return res.end('no draft'); }
+        if (!a.playRequestedAt) {
+          a.playRequestedAt = new Date().toISOString();
+          writeManifest(groupDir, man);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end(JSON.stringify({ ok: true, playRequestedAt: a.playRequestedAt }));
+      } catch (e) { res.writeHead(500); return res.end('draft-play error'); }
     }
 
     // POST /archive-delete?g=<group>&index=<k> - drop one archived chat segment
