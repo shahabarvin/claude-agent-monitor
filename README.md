@@ -57,19 +57,39 @@ AGENT_MONITOR_DIR="/path/to/project/.agent-monitor" PORT=4599 node scripts/serve
 
 `SKILL.md` ships with this repo so a coding agent can drive the dashboard
 automatically — start the server, register agent cards, stream progress, and
-run the manager chat. Install it into your agent's skills directory:
+run the manager chat.
+
+### Install (recommended — one-command plugin)
+
+The repo ships a plugin manifest, so a teammate can add it as a marketplace and
+install in two lines inside Claude Code:
+
+```text
+/plugin marketplace add shahabarvin/claude-agent-monitor
+/plugin install agent-monitor@agent-monitor
+```
+
+(The first `agent-monitor` is the plugin; the second is the marketplace — both
+are named `agent-monitor` in this repo.) Updating later:
+
+```text
+/plugin marketplace update agent-monitor
+```
+
+### Install (manual clone)
 
 ```bash
 # clone straight into the skills folder
-git clone https://github.com/<your-user>/agent-monitor.git ~/.claude/skills/agent-monitor
+git clone https://github.com/shahabarvin/claude-agent-monitor.git ~/.claude/skills/agent-monitor
 ```
 
 or clone anywhere and copy/symlink the folder into `~/.claude/skills/`. Restart
 your agent session so it picks up the new skill.
 
-> **Plugin marketplace install** — *(TODO)* a one-command marketplace install
-> can be added later by shipping a marketplace manifest; until then use the
-> clone method above.
+> **Note:** the dashboard runs a small Node server. The first time the skill
+> launches it, the agent asks permission to run `node scripts/server.js`; approve
+> it (or pre-approve in `.claude/settings.json`). Re-invoke the skill once per
+> session to (re)start the server.
 
 ### Invoke it
 
