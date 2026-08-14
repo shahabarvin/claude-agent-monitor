@@ -318,7 +318,8 @@ function ensureCard(a) {
     <div class="wt"></div>
     <div class="now"></div>
     <div class="stream"></div>`;
-  const entry = { kind: 'agent', el, streamEl: el.querySelector('.stream'), lastText: '' };
+  const entry = { kind: 'agent', id: a.id, el, streamEl: el.querySelector('.stream'), lastText: '' };
+  el.dataset.id = a.id;
   cards.set(a.id, entry);
   // Cards land BEFORE the placeholders, so empty slots trail the real work.
   grid.insertBefore(el, grid.querySelector('.ph'));
@@ -381,7 +382,26 @@ async function saveDraft(id, entry) {
   } catch (e) {}
 }
 
-function wireDraftCard(entry, id) {
+// Play may hand a draft a clean id derived from its name (see /draft-play on the
+// server). Move the card's entry + element onto the new id so its polling reads
+// the right log, without rebuilding the card or losing its place in the grid. If
+// a poll tick has already built a card under the new id, drop that duplicate and
+// keep this one.
+function retargetCard(oldId, newId) {
+  if (!newId || oldId === newId) return;
+  const entry = cards.get(oldId);
+  const dup = cards.get(newId);
+  if (dup && dup !== entry) { dup.el.remove(); cards.delete(newId); }
+  if (!entry) return;
+  cards.delete(oldId);
+  cards.set(newId, entry);
+  entry.id = newId;
+  if (entry.el) entry.el.dataset.id = newId;
+}
+
+// Handlers key off entry.id (not a captured id) so they keep working after a
+// retarget - delete stays an escape hatch even once the id has changed.
+function wireDraftCard(entry) {
   const el = entry.el;
   el.querySelector('.d-edit').onclick = async () => {
     if (!entry.editing) {                 // enter edit mode
@@ -391,7 +411,7 @@ function wireDraftCard(entry, id) {
     } else {                              // save
       entry.editing = false;
       applyDraftEditing(entry);
-      await saveDraft(id, entry);
+      await saveDraft(entry.id, entry);
       tick();
     }
   };
@@ -399,17 +419,24 @@ function wireDraftCard(entry, id) {
     if (entry.editing) {                  // persist edits before launching
       entry.editing = false;
       applyDraftEditing(entry);
-      await saveDraft(id, entry);
+      await saveDraft(entry.id, entry);
     }
-    try { await fetch('/draft-play?g=' + GROUP + '&id=' + encodeURIComponent(id), { method: 'POST' }); } catch (e) {}
+    try {
+      const r = await fetch('/draft-play?g=' + GROUP + '&id=' + encodeURIComponent(entry.id), { method: 'POST' });
+      if (r.ok) {                         // server may have renamed the id to a name-slug
+        const d = await r.json().catch(() => null);
+        if (d && d.id) retargetCard(entry.id, d.id);
+      }
+    } catch (e) {}
     tick();
   };
   el.querySelector('.d-del').onclick = async () => {
     if (!confirm('Delete this draft task?')) return;
-    removedLocal.add(id);
-    entry.el.remove(); cards.delete(id);
+    const delId = entry.id;
+    removedLocal.add(delId);
+    entry.el.remove(); cards.delete(delId);
     fillPlaceholders();
-    try { await fetch('/draft-delete?g=' + GROUP + '&id=' + encodeURIComponent(id), { method: 'POST' }); } catch (e) {}
+    try { await fetch('/draft-delete?g=' + GROUP + '&id=' + encodeURIComponent(delId), { method: 'POST' }); } catch (e) {}
   };
 }
 
@@ -448,10 +475,11 @@ function syncDraftCard(a) {
   if (entry && entry.kind !== 'draft') { entry.el.remove(); cards.delete(a.id); entry = null; }
   if (!entry) {
     const el = makeDraftCardEl();
-    entry = { kind: 'draft', el, editing: false };
+    entry = { kind: 'draft', id: a.id, el, editing: false };
+    el.dataset.id = a.id;
     cards.set(a.id, entry);
     grid.insertBefore(el, grid.querySelector('.ph'));
-    wireDraftCard(entry, a.id);
+    wireDraftCard(entry);
     if (autoEditIds.has(a.id)) { autoEditIds.delete(a.id); entry.editing = true; }
   }
   renderDraftCard(entry, a);

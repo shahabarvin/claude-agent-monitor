@@ -120,6 +120,23 @@ function writeManifest(groupDir, man) {
   fs.mkdirSync(groupDir, { recursive: true });
   writeFileAtomic(path.join(groupDir, 'manifest.json'), JSON.stringify(man, null, 2));
 }
+// Move a card's log file when its id is renamed (on Play) so the streaming card
+// keeps its history under the new id. Best-effort and guarded: no old log means
+// nothing to move; an already-present target is left untouched (uniqueId should
+// keep that from happening). Rename is atomic on one filesystem; copy+unlink is
+// the fallback for the odd cross-device case.
+function renameAgentLog(groupDir, oldId, newId) {
+  const dir = path.join(groupDir, 'agents');
+  const from = path.join(dir, String(oldId) + '.log');
+  const to = path.join(dir, String(newId) + '.log');
+  try {
+    if (!fs.existsSync(from)) return;   // no history yet - card just starts fresh
+    if (fs.existsSync(to)) return;      // never clobber an existing log
+    fs.mkdirSync(dir, { recursive: true });
+    try { fs.renameSync(from, to); }
+    catch (e) { fs.copyFileSync(from, to); try { fs.unlinkSync(from); } catch (e2) {} }
+  } catch (e) { /* best-effort */ }
+}
 // Card ids are lowercase [a-z0-9_-]; derive one from the name, else fall back.
 function slugifyId(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
@@ -483,22 +500,40 @@ http.createServer((req, res) => {
       } catch (e) { res.writeHead(500); return res.end('draft-delete error'); }
     }
 
-    // POST /draft-play?g=<group>&id=<id> - stamp playRequestedAt so the manager
-    // knows to spawn this now. Status stays 'draft' - the manager flips it to
-    // 'running' when it actually launches. Idempotent: the stamp is written only
-    // once, so a second Play press never queues a duplicate spawn.
+    // POST /draft-play?g=<group>&id=<id> - the launch signal. Two things happen,
+    // atomically, in one manifest write:
+    //   1. If the draft has a name, its id is renamed to a clean slug of that
+    //      name (slugifyId/uniqueId), and agents/<oldId>.log is moved to follow
+    //      so no stream history is lost. The NEW id is returned so the page can
+    //      retarget the card without a reload. A blank name keeps the generated
+    //      id; a slug that collides with another card is disambiguated.
+    //   2. playRequestedAt is stamped so the manager knows to spawn this now.
+    // Status stays 'draft' - the manager flips it to 'running' when it actually
+    // launches. Idempotent: neither step rewrites once already applied, so a
+    // second Play press never queues a duplicate spawn.
     if (req.method === 'POST' && urlPath === '/draft-play') {
       const id = q.get('id');
       try {
         const man = readManifest(groupDir);
         const a = man.agents.find((x) => x.id === id);
         if (!a || a.status !== 'draft') { res.writeHead(404, { 'Cache-Control': 'no-store' }); return res.end('no draft'); }
-        if (!a.playRequestedAt) {
-          a.playRequestedAt = new Date().toISOString();
-          writeManifest(groupDir, man);
+        let changed = false;
+        // Give the card a clean id from its name on launch. Skip if the name has
+        // no usable slug or the slug already equals the current id.
+        const slug = slugifyId(a.name);
+        if (slug && slug !== a.id) {
+          const taken = new Set(man.agents.map((x) => x.id).filter((x) => x !== a.id));
+          const newId = uniqueId(slug, taken);
+          if (newId !== a.id) {
+            renameAgentLog(groupDir, a.id, newId);
+            a.id = newId;
+            changed = true;
+          }
         }
+        if (!a.playRequestedAt) { a.playRequestedAt = new Date().toISOString(); changed = true; }
+        if (changed) writeManifest(groupDir, man);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        return res.end(JSON.stringify({ ok: true, playRequestedAt: a.playRequestedAt }));
+        return res.end(JSON.stringify({ ok: true, id: a.id, playRequestedAt: a.playRequestedAt }));
       } catch (e) { res.writeHead(500); return res.end('draft-play error'); }
     }
 

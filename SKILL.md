@@ -118,9 +118,12 @@ name, describe, give a worktree, and edit in place. A draft is inert: the page
 only writes it into `manifest.json` (`status:"draft"`) - nothing runs until the
 human presses **Play** on the card.
 
-Play stamps the card with `playRequestedAt` (an ISO timestamp) and leaves the
-status as `draft`. That stamp is the launch signal, and it is written once, so a
-second Play never queues a duplicate.
+Play does two things: it renames the card's `id` to a clean slug of its `name`
+(so "Castiel" becomes `castiel`; a duplicate name gets `castiel2`, and a blank
+name keeps the generated id), and it stamps `playRequestedAt` (an ISO timestamp),
+leaving the status as `draft`. The stamp is the launch signal, written once, so a
+second Play never queues a duplicate. By the time you see the card, its `id` is
+already the clean slug and the log file (if any) has moved to match.
 
 Your side of the loop, as you tail the group:
 
@@ -134,15 +137,13 @@ Your side of the loop, as you tail the group:
 - **Leave untouched** any draft with **no** `playRequestedAt` - the human is
   still editing it. Never launch a draft on your own.
 
-> **Never change a played card's `id`, and never rename its log file.** A draft
-> keeps its generated `id` (e.g. `draft-a1b2c3`) for its whole life. Change only
-> `name` (display), `status`, `worktree`, `startedAt`/`endedAt`. The card reads
-> its stream from `agents/<id>.log`, so the streaming agent must append to that
-> exact file - if you rename the log to the display name, the card reads an
-> empty stream. And every later update (flip to `done`, `remove`) must target
-> the **same `id`**, not the display name - close a card by its `name` and the
-> match silently fails, leaving it stuck green forever. Set `name` for the human
-> to read; key everything else off `id`.
+> **The `id` is already clean - use it as-is.** Play has done the renaming for
+> you, so the card arrives with a presentable `id` (a slug of its `name`) that
+> already matches its log filename. Do not rename it. Stream from
+> `agents/<id>.log`, and key every later update - `status`,
+> `startedAt`/`endedAt`, remove - off that same `id`. Set `name` for the human
+> to read, but never look a card up by its display name: close one by `name` and
+> the match silently fails, leaving it stuck green forever.
 
 ## 6. Manager chat protocol - `chat.jsonl`
 
