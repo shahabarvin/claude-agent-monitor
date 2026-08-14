@@ -9,7 +9,7 @@ const path = require('path');
 const SCRIPT_DIR = __dirname;                              // scripts/
 const ASSET_DIR = path.join(SCRIPT_DIR, '..', 'assets');  // ../assets/ (the UI)
 
-// Runtime data lives here — one sub-directory per group (manifest, agent logs,
+// Runtime data lives here - one sub-directory per group (manifest, agent logs,
 // chat.jsonl, uploads). Override the location with the AGENT_MONITOR_DIR env
 // var; otherwise it defaults to a groups/ folder beside this script. Nothing
 // here is ever hardcoded to a specific project path.
@@ -54,13 +54,13 @@ http.createServer((req, res) => {
   try {
     const urlPath = decodeURIComponent(req.url.split('?')[0]);
 
-    // Each session gets its own GROUP under <DATA_DIR>/<g>/ — separate
+    // Each session gets its own GROUP under <DATA_DIR>/<g>/ - separate
     // manifest, agent logs and chat. The page selects it via ?g=<name>.
     const q = new URLSearchParams(req.url.split('?')[1] || '');
     const g = (q.get('g') || 'main').replace(/[^a-zA-Z0-9_-]/g, '') || 'main';
     const groupDir = path.join(DATA_DIR, g);
 
-    // POST /say?g=<group> — the dashboard's chat box appends a user message to
+    // POST /say?g=<group> - the dashboard's chat box appends a user message to
     // that group's chat.jsonl; the manager session tails the file.
     if (req.method === 'POST' && urlPath === '/say') {
       let body = '';
@@ -79,7 +79,7 @@ http.createServer((req, res) => {
       return;
     }
 
-    // POST /clear?g=<group> — appends a clear-marker; the UI hides everything
+    // POST /clear?g=<group> - appends a clear-marker; the UI hides everything
     // before the LAST marker. No truncation (the manager session tails this
     // file with an open handle), and history stays in the file as archive.
     if (req.method === 'POST' && urlPath === '/clear') {
@@ -91,7 +91,7 @@ http.createServer((req, res) => {
       } catch (e) { res.writeHead(500); return res.end('clear error'); }
     }
 
-    // POST /upload?g=<group>&name=<file> — raw body saved under the group's
+    // POST /upload?g=<group>&name=<file> - raw body saved under the group's
     // uploads/ dir; a user-role chat line records it so the manager session's
     // monitor picks it up and can read the file straight off disk.
     if (req.method === 'POST' && urlPath === '/upload') {
@@ -123,7 +123,7 @@ http.createServer((req, res) => {
       return;
     }
 
-    // POST /remove?g=<group>&id=<agentId> — drop a finished agent from that
+    // POST /remove?g=<group>&id=<agentId> - drop a finished agent from that
     // group's manifest so the remove button survives refreshes. Log is kept.
     if (req.method === 'POST' && urlPath === '/remove') {
       const id = q.get('id');

@@ -1,12 +1,12 @@
 ---
 name: agent-monitor
-description: Live local dashboard for watching background agents — a grid of status cards with streamed per-agent logs plus a two-way manager chat. Use when the user says "start group work", "monitor agents", "agent dashboard", or wants to launch and coordinate several background agents at once and watch them in the browser.
+description: Live local dashboard for watching background agents - a grid of status cards with streamed per-agent logs plus a two-way manager chat. Use when the user says "start group work", "monitor agents", "agent dashboard", or wants to launch and coordinate several background agents at once and watch them in the browser.
 ---
 
 # Agent Monitor
 
 A tiny local web dashboard for coordinating a fleet of background agents. It
-serves a grid of cards — one per agent — showing name, colour-coded status,
+serves a grid of cards - one per agent - showing name, colour-coded status,
 optional git worktree, and a live stream of that agent's log lines. A manager
 chat bar at the bottom is a two-way channel between the human (in the browser)
 and the manager session (you), with file/image paste, archives, and RTL text
@@ -14,7 +14,7 @@ support.
 
 You are the **manager session**: you launch the background agents, keep the
 dashboard's files up to date, and answer the human in the chat. The dashboard
-is display-only — it renders whatever files you write on disk.
+is display-only - it renders whatever files you write on disk.
 
 ## 1. Start the server
 
@@ -26,8 +26,8 @@ facility; it must keep running for the whole session):
 AGENT_MONITOR_DIR="<project>/.agent-monitor" PORT=4599 node scripts/server.js
 ```
 
-- `PORT` — default `4599`.
-- `AGENT_MONITOR_DIR` — where runtime data (per-group manifests, logs, chat)
+- `PORT` - default `4599`.
+- `AGENT_MONITOR_DIR` - where runtime data (per-group manifests, logs, chat)
   is stored. Point it at a folder inside the current project (e.g.
   `<project>/.agent-monitor`) so runtime data never pollutes the installed
   skill. If unset it defaults to a `groups/` folder beside `server.js`.
@@ -42,7 +42,7 @@ manifest, agent logs and chat. Use a fresh group name per working session so
 runs don't collide. All paths below are relative to
 `<AGENT_MONITOR_DIR>/<group>/`.
 
-## 3. Register agent cards — `manifest.json`
+## 3. Register agent cards - `manifest.json`
 
 Before (or as) you launch a background agent, add it to `manifest.json`:
 
@@ -62,17 +62,17 @@ Before (or as) you launch a background agent, add it to `manifest.json`:
 }
 ```
 
-- `id` — lowercase, `[a-z0-9_-]` only. It is also the log filename
+- `id` - lowercase, `[a-z0-9_-]` only. It is also the log filename
   (`agents/<id>.log`).
-- `name` — display name (Title-Case).
-- `worktree` — absolute path if the agent runs in its own git worktree, else
+- `name` - display name (Title-Case).
+- `worktree` - absolute path if the agent runs in its own git worktree, else
   `""`.
-- `startedAt` / `endedAt` — ISO timestamps; set `endedAt` when it finishes.
+- `startedAt` / `endedAt` - ISO timestamps; set `endedAt` when it finishes.
 
-Append to the `agents` array — never overwrite other agents' entries. Write
+Append to the `agents` array - never overwrite other agents' entries. Write
 the whole file back as valid JSON each time.
 
-## 4. Stream progress — `agents/<id>.log`
+## 4. Stream progress - `agents/<id>.log`
 
 Each background agent (or you, on its behalf) appends timestamped lines to its
 own log. The card streams them; the newest line is highlighted as the card's
@@ -104,24 +104,24 @@ printf '[%s] %s\n' "$(date +%H:%M:%S)" "reading the config file" \
 Update the agent's `status` in `manifest.json` when it transitions, and set
 `endedAt`. Only `done` cards get a remove button in the UI.
 
-## 6. Manager chat protocol — `chat.jsonl`
+## 6. Manager chat protocol - `chat.jsonl`
 
 `chat.jsonl` is append-only JSONL. The browser writes the human's messages;
 you tail the file and append your replies. Roles:
 
-- `user` — written by the server when the human sends a message or uploads a
-  file. File uploads look like `{"role":"user","text":"file: shot.png (12 KB)","file":"<stamped-name>","ts":...}`; the file is saved under `uploads/` — read it straight off disk.
-- `manager` — **your** replies. Append `{"role":"manager","text":"...","ts":"<iso>"}`.
-- `typing` — optional "composing" hint. Append `{"role":"typing","text":"","ts":...}` before a slow reply; it is superseded the moment your next `manager` line lands, and the UI shows an animated `. . .` in the meantime.
-- `status` — greyed-out in-band note. Use it to record **management actions**
+- `user` - written by the server when the human sends a message or uploads a
+  file. File uploads look like `{"role":"user","text":"file: shot.png (12 KB)","file":"<stamped-name>","ts":...}`; the file is saved under `uploads/` - read it straight off disk.
+- `manager` - **your** replies. Append `{"role":"manager","text":"...","ts":"<iso>"}`.
+- `typing` - optional "composing" hint. Append `{"role":"typing","text":"","ts":...}` before a slow reply; it is superseded the moment your next `manager` line lands, and the UI shows an animated `. . .` in the meantime.
+- `status` - greyed-out in-band note. Use it to record **management actions**
   so the human sees them in the chat: prefix them `[MGR]`, e.g.
   `{"role":"status","text":"[MGR] launched Castiel on route-mapping","ts":...}`.
-- `clear` — written when the human clicks **clear**; everything before the last
-  `clear` marker becomes an archive. Never truncate the file — keep tailing it.
+- `clear` - written when the human clicks **clear**; everything before the last
+  `clear` marker becomes an archive. Never truncate the file - keep tailing it.
 
 Conventions:
 - **Chunked replies.** For a long answer, append several short `manager` lines
-  instead of one giant line — they stream in naturally and read better.
+  instead of one giant line - they stream in naturally and read better.
 - **Announce management actions** as `[MGR]` `status` lines: spawning, removing,
   reassigning, or stopping an agent.
 - Poll / tail `chat.jsonl` for new `user` lines throughout the session and
@@ -162,7 +162,7 @@ Benjamin Rachel   Ezekiel  Metatron
   agent from `manifest.json` (the log file is kept). You can also remove an
   entry yourself by rewriting `manifest.json`.
 - The **archive** and **clear** buttons only touch the chat, via `clear`
-  markers — no files are deleted.
+  markers - no files are deleted.
 
 ## Summary of files (per group)
 

@@ -1,7 +1,7 @@
 # dependencies
 node_modules/
 
-# runtime data — per-group manifests, agent logs, chat, uploads
+# runtime data - per-group manifests, agent logs, chat, uploads
 groups/
 scripts/groups/
 .agent-monitor/

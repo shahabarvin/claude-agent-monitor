@@ -1,7 +1,7 @@
 {
   "name": "agent-monitor",
   "version": "1.0.0",
-  "description": "Live local dashboard for watching background agents — a grid of status cards with streamed logs and a two-way manager chat.",
+  "description": "Live local dashboard for watching background agents - a grid of status cards with streamed logs and a two-way manager chat.",
   "author": "Shahab Avin",
   "license": "MIT",
   "keywords": [
