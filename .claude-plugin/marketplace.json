@@ -5,7 +5,7 @@
     {
       "name": "agent-monitor",
       "description": "Live local dashboard for watching background agents - status grid, streamed logs, and a two-way manager chat.",
-      "version": "1.0.0",
+      "version": "1.2.0",
       "source": "./"
     }
   ]
