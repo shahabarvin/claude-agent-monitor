@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# runtime data — per-group manifests, agent logs, chat, uploads
+groups/
+scripts/groups/
+.agent-monitor/
+
+# logs & debug
+npm-debug.log*
+yarn-error.log*
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini

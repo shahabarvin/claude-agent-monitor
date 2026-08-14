@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent monitor</title>
+<style>
+  :root {
+    --ink: #000; --paper: #fff; --dim: #444; --faint: #888;
+    --run: #16c73c; --fail: #f01818; --done: #1e5bff;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0 !important; }
+  body { background: var(--paper); color: var(--ink); font-family: var(--mono); font-size: 13px; line-height: 1.5; }
+
+  .conn { position: fixed; top: 0; right: 0; z-index: 10; background: var(--ink); color: var(--paper);
+          font-size: 10px; padding: 2px 8px; letter-spacing: 1px; text-transform: uppercase; }
+  .conn.err { background: var(--fail); }
+
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 8px; background: var(--paper); }
+
+  .card { background: var(--paper); border: 2px solid var(--ink); display: flex; flex-direction: column; height: 460px; }
+
+  .card-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 2px solid var(--ink); }
+  .card-head.running { background: var(--run); color: var(--ink); }
+  .card-head.failed, .card-head.stopped { background: var(--fail); color: var(--paper); }
+  .card-head.done { background: var(--done); color: var(--paper); }
+  .name { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .5px;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; flex: none; }
+  .card-head.running .status::before { content: "\25A0 "; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .elapsed { margin-left: auto; font-size: 11px; flex: none; }
+  .rm { flex: none; margin-left: 8px; background: var(--ink); color: var(--paper); border: 0; cursor: pointer;
+        font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 1px; padding: 3px 8px;
+        text-transform: uppercase; }
+  .rm:hover { background: var(--paper); color: var(--ink); outline: 2px solid var(--ink); }
+
+  .task { padding: 6px 10px; color: var(--dim); font-size: 11px; border-bottom: 1px solid var(--ink); }
+  .wt { padding: 4px 10px; font-size: 10.5px; color: var(--dim); border-bottom: 1px solid var(--ink);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wt::before { content: "wt "; font-weight: 700; color: var(--ink); }
+  .wt:empty { display: none; }
+  .now  { padding: 6px 10px; font-size: 12px; font-weight: 700; border-bottom: 2px solid var(--ink);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .now::before { content: "> "; }
+
+  .stream { flex: 1; padding: 8px 10px; font-size: 11.5px; line-height: 1.7; color: #111;
+            overflow-y: auto; min-height: 0; white-space: pre-wrap; word-break: break-word; }
+  .stream .t { color: var(--faint); }
+  .stream div { unicode-bidi: plaintext; }
+
+  /* the always-present empty slot — where the next agent will land */
+  .ph { border: 2px dashed var(--ink); height: 460px; display: flex; align-items: center;
+        justify-content: center; color: #c6c6c6; letter-spacing: 1px; font-size: 13px; }
+
+  /* manager chat — minimized: bottom-right bar · open: full width, taller */
+  #chat { position: fixed; bottom: 0; left: 0; right: 0; background: var(--paper);
+          border-top: 2px solid var(--ink); z-index: 20; }
+  #chat.min { left: auto; width: 380px; border: 2px solid var(--ink); border-bottom: 0; border-right: 0; }
+  #chat-head { background: var(--ink); color: var(--paper); padding: 5px 10px; cursor: pointer;
+               display: flex; gap: 10px; align-items: center; font-size: 11px; font-weight: 700;
+               letter-spacing: 1.5px; text-transform: uppercase; user-select: none; }
+  #chat-head .hint { margin-left: auto; font-weight: 400; letter-spacing: 0; color: #aaa; }
+  #chat-clear { background: var(--paper); color: var(--ink); border: 0; cursor: pointer; margin-left: 12px;
+                font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 1px;
+                padding: 1px 8px; text-transform: uppercase; }
+  #chat-clear:hover { background: var(--fail); color: var(--paper); }
+  #chat-archive { background: var(--paper); color: var(--ink); border: 0; cursor: pointer; margin-left: 6px;
+                  font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 1px;
+                  padding: 1px 8px; text-transform: uppercase; }
+  #chat-archive:hover { background: var(--done); color: var(--paper); }
+  .arch-row { cursor: pointer; padding: 4px 6px; border: 1px solid var(--ink); margin-bottom: 6px; font-weight: 700; }
+  .arch-row:hover { background: var(--ink); color: var(--paper); }
+  .arch-banner { background: var(--ink); color: var(--paper); padding: 3px 8px; margin-bottom: 8px;
+                 font-size: 10.5px; letter-spacing: 1px; text-transform: uppercase; }
+  #chat-body { display: flex; flex-direction: column; height: 55vh; }
+  #chat.min #chat-body { display: none; }
+  #chat-msgs { flex: 1; overflow-y: auto; padding: 8px 10px; font-size: 11.5px; line-height: 1.7; }
+  /* NO unicode-bidi:plaintext here — it overrides the explicit dir attribute
+     and was what scrambled mixed right-to-left / Latin lines. dir=rtl wins now. */
+  #chat-msgs div { white-space: pre-wrap; word-break: break-word; margin-bottom: 4px; }
+  .m-user { font-weight: 700; color: var(--done); }
+  .m-user::before { content: "you > "; }
+  .m-manager::before { content: "mgr > "; font-weight: 700; }
+  .m-status { color: var(--faint); font-size: 10.5px; }
+  .m-status::before { content: "\00B7 "; }
+  .m-typing { color: var(--faint); font-weight: 700; letter-spacing: 3px; animation: tblink .9s steps(1) infinite; }
+  @keyframes tblink { 50% { opacity: .25; } }
+  #chat-form { display: flex; border-top: 2px solid var(--ink); }
+  #chat-input { flex: 1; border: 0; outline: 0; font-family: var(--mono); font-size: 12px; padding: 8px 10px;
+                background: var(--paper); color: var(--ink); resize: none; max-height: 140px; line-height: 1.5; }
+  #chat-send { background: var(--ink); color: var(--paper); border: 0; cursor: pointer;
+               font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px;
+               padding: 0 16px; text-transform: uppercase; }
+  #chat-send:hover { background: var(--done); }
+  #chat-file { background: var(--paper); color: var(--ink); border: 0; border-left: 2px solid var(--ink);
+               cursor: pointer; font-family: var(--mono); font-size: 11px; font-weight: 700;
+               letter-spacing: 1px; padding: 0 12px; text-transform: uppercase; }
+  #chat-file:hover { background: var(--ink); color: var(--paper); }
+  .m-user a, .m-manager a { color: inherit; font-weight: 700; }
+
+  /* staged attachments tray — files wait here until Send */
+  #chat-stage { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; border-top: 2px solid var(--ink); }
+  #chat-stage:empty { display: none; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 2px solid var(--ink); padding: 2px 4px 2px 8px; font-size: 10.5px; }
+  .chip button { border: 0; background: var(--ink); color: var(--paper); cursor: pointer;
+                 font-family: var(--mono); font-size: 10px; font-weight: 700; padding: 1px 6px; }
+  .chip button:hover { background: var(--fail); }
+
+  /* image preview modal */
+  #imgmodal { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: none; z-index: 50;
+              align-items: center; justify-content: center; flex-direction: column; }
+  #imgmodal.open { display: flex; }
+  #imgmodal img { max-width: 92vw; max-height: 78vh; border: 2px solid var(--paper); background: #fff; }
+  #imgmodal .bar { display: flex; }
+  #imgmodal .bar a, #imgmodal .bar button {
+    background: var(--paper); color: var(--ink); border: 2px solid var(--paper); border-top: 0;
+    font-family: var(--mono); font-weight: 700; font-size: 11px; letter-spacing: 1px;
+    text-transform: uppercase; padding: 6px 18px; cursor: pointer; text-decoration: none; }
+  #imgmodal .bar a:hover, #imgmodal .bar button:hover { background: var(--ink); color: var(--paper); }
+</style>
+</head>
+<body>
+<span class="conn" id="conn">connecting</span>
+<div id="grid"><div class="ph" id="ph">Let's do some work here...</div></div>
+
+<div id="chat" class="min">
+  <div id="chat-head" onclick="toggleChat()"><span>manager</span>
+    <button id="chat-clear" type="button" onclick="event.stopPropagation(); clearChat()">clear</button>
+    <button id="chat-archive" type="button" onclick="event.stopPropagation(); toggleArchives()">archive</button>
+    <span class="hint">click to toggle</span></div>
+  <div id="chat-body">
+    <div id="chat-msgs"></div>
+    <div id="chat-stage"></div>
+    <form id="chat-form" onsubmit="return sendMsg(event)">
+      <textarea id="chat-input" rows="1" placeholder="message the manager session... (Enter = send · Shift+Enter = new line)"></textarea>
+      <input type="file" id="chat-fileinput" hidden multiple>
+      <button id="chat-file" type="button" onclick="document.getElementById('chat-fileinput').click()">file</button>
+      <button id="chat-send" type="submit">send</button>
+    </form>
+  </div>
+</div>
+
+<div id="imgmodal" onclick="if (event.target === this) closeImg()">
+  <img id="imgmodal-img" alt="">
+  <div class="bar">
+    <a id="imgmodal-dl" download>download</a>
+    <button type="button" onclick="closeImg()">close</button>
+  </div>
+</div>
+
+<script>
+// Each session = one group (its own manifest/agents/chat). ?g=<name>
+const GROUP = (new URLSearchParams(location.search).get('g') || 'main').replace(/[^a-zA-Z0-9_-]/g, '') || 'main';
+document.title = 'agent monitor · ' + GROUP;
+const G = 'groups/' + GROUP + '/';
+
+const grid = document.getElementById('grid');
+const conn = document.getElementById('conn');
+const cards = new Map(); // id -> {el, streamEl, lastText}
+const removedLocal = new Set();
+
+function fmtElapsed(startIso, endIso) {
+  const s = new Date(startIso).getTime();
+  const e = endIso ? new Date(endIso).getTime() : Date.now();
+  const sec = Math.max(0, Math.floor((e - s) / 1000));
+  const m = Math.floor(sec / 60), r = sec % 60;
+  return m ? `${m}m${String(r).padStart(2,'0')}s` : `${r}s`;
+}
+
+async function removeAgent(id) {
+  removedLocal.add(id);
+  const entry = cards.get(id);
+  if (entry) { entry.el.remove(); cards.delete(id); }
+  fillPlaceholders();
+  try { await fetch('/remove?g=' + GROUP + '&id=' + encodeURIComponent(id), { method: 'POST' }); } catch (e) {}
+}
+
+function ensureCard(a) {
+  if (cards.has(a.id)) return cards.get(a.id);
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML = `
+    <div class="card-head">
+      <span class="name"></span><span class="status"></span><span class="elapsed"></span>
+    </div>
+    <div class="task"></div>
+    <div class="wt"></div>
+    <div class="now"></div>
+    <div class="stream"></div>`;
+  const entry = { el, streamEl: el.querySelector('.stream'), lastText: '' };
+  cards.set(a.id, entry);
+  // Cards land BEFORE the placeholders, so empty slots trail the real work.
+  grid.insertBefore(el, grid.querySelector('.ph'));
+  return entry;
+}
+
+// Keep enough empty slots that the grid always covers the viewport — the page
+// reads as a wall of squares with work filling in from the top-left.
+function fillPlaceholders() {
+  const cols = Math.max(1, Math.floor((grid.clientWidth + 8) / 388));
+  const rowH = 468; // fixed cell height + gap
+  const rows = Math.max(1, Math.ceil((window.innerHeight - grid.getBoundingClientRect().top) / rowH));
+  const needed = Math.max(cols * rows - cards.size, 1);
+  const phs = [...grid.querySelectorAll('.ph')];
+  while (phs.length < needed) {
+    const d = document.createElement('div');
+    d.className = 'ph';
+    grid.appendChild(d);
+    phs.push(d);
+  }
+  while (phs.length > needed) phs.pop().remove();
+  phs.forEach((p) => { p.textContent = "Let's do some work here..."; });
+}
+window.addEventListener('resize', fillPlaceholders);
+
+
+function renderMeta(entry, a) {
+  entry.el.querySelector('.name').textContent = a.name || a.id;
+  const head = entry.el.querySelector('.card-head');
+  head.className = 'card-head ' + (a.status || 'running');
+  entry.el.querySelector('.status').textContent = a.status;
+  entry.el.querySelector('.elapsed').textContent = fmtElapsed(a.startedAt, a.endedAt);
+  entry.el.querySelector('.task').textContent = a.task || '';
+  entry.el.querySelector('.wt').textContent = a.worktree || '';
+  const hasRm = head.querySelector('.rm');
+  if (a.status === 'done' && !hasRm) {
+    const b = document.createElement('button');
+    b.className = 'rm'; b.textContent = 'remove';
+    b.onclick = () => removeAgent(a.id);
+    head.appendChild(b);
+  } else if (a.status !== 'done' && hasRm) {
+    hasRm.remove();
+  }
+}
+
+function renderStream(entry, text) {
+  if (text === entry.lastText) return;
+  const nearBottom = entry.streamEl.scrollHeight - entry.streamEl.scrollTop - entry.streamEl.clientHeight < 40;
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  const esc = (s) => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  entry.streamEl.innerHTML = lines.map(l => {
+    const m = l.match(/^(\[[\d:]+\])\s?(.*)$/);
+    return m ? `<div><span class="t">${esc(m[1])}</span> ${esc(m[2])}</div>` : `<div>${esc(l)}</div>`;
+  }).join('');
+  const last = lines[lines.length - 1] || '';
+  entry.el.querySelector('.now').textContent = last.replace(/^\[[\d:]+\]\s?/, '');
+  if (nearBottom) entry.streamEl.scrollTop = entry.streamEl.scrollHeight;
+  entry.lastText = text;
+}
+
+async function tick() {
+  try {
+    const res = await fetch(G + 'manifest.json?t=' + Date.now());
+    if (!res.ok) throw new Error(res.status);
+    const man = await res.json();
+    conn.textContent = 'live · ' + GROUP;
+    conn.className = 'conn';
+    for (const a of (man.agents || [])) {
+      if (removedLocal.has(a.id)) continue;
+      const entry = ensureCard(a);
+      renderMeta(entry, a);
+      try {
+        const lr = await fetch(G + 'agents/' + a.id + '.log?t=' + Date.now());
+        if (lr.ok) renderStream(entry, await lr.text());
+      } catch (e) { /* log may not exist yet */ }
+    }
+  } catch (e) {
+    conn.textContent = 'disconnected';
+    conn.className = 'conn err';
+  }
+  fillPlaceholders();
+}
+tick();
+setInterval(tick, 1500);
+fillPlaceholders();
+
+// ── manager chat ─────────────────────────────────────────────────────────────
+const chatBox = document.getElementById('chat');
+const chatMsgs = document.getElementById('chat-msgs');
+const chatInput = document.getElementById('chat-input');
+let lastChatText = '';
+
+if (localStorage.getItem('chatOpen-' + GROUP) === '1') chatBox.classList.remove('min');
+function toggleChat() {
+  chatBox.classList.toggle('min');
+  localStorage.setItem('chatOpen-' + GROUP, chatBox.classList.contains('min') ? '0' : '1');
+  if (!chatBox.classList.contains('min')) chatMsgs.scrollTop = chatMsgs.scrollHeight;
+}
+
+// Files wait in the tray until Send — so text + several files/pastes go out
+// together, in the order they were staged (files first, then the text).
+let staged = [];
+const stageEl = document.getElementById('chat-stage');
+
+function renderStage() {
+  stageEl.innerHTML = '';
+  staged.forEach((f, i) => {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    const n = document.createElement('span');
+    n.textContent = (f.stageName || f.name) + ' (' + Math.max(1, Math.round(f.size / 1024)) + 'KB)';
+    const x = document.createElement('button');
+    x.type = 'button'; x.textContent = 'x';
+    x.onclick = () => { staged.splice(i, 1); renderStage(); };
+    chip.append(n, x);
+    stageEl.appendChild(chip);
+  });
+}
+
+function stageFile(f) {
+  if (!f) return;
+  if (f.size > 25 * 1024 * 1024) { alert('max 25 MB'); return; }
+  if (!f.name || f.name === 'image.png') {
+    f.stageName = 'clipboard-' + new Date().toISOString().replace(/[:.]/g, '-') + '.png';
+  }
+  staged.push(f);
+  renderStage();
+}
+
+// True from the moment a message is sent until the manager's next line lands —
+// drives the automatic "…" so you always know the channel is alive.
+let awaitingReply = false;
+
+async function sendMsg(e) {
+  e.preventDefault();
+  const text = chatInput.value.trim();
+  if (!text && !staged.length) return false;
+  chatInput.value = '';
+  chatInput.style.height = 'auto';
+  const files = staged.slice();
+  staged = [];
+  renderStage();
+  for (const f of files) await uploadFile(f); // sequential — arrival order = staged order
+  if (text) {
+    try { await fetch('/say?g=' + GROUP, { method: 'POST', body: JSON.stringify({ text }) }); } catch (err) {}
+  }
+  awaitingReply = true;
+  pollChat();
+  return false;
+}
+
+// Enter sends · Shift+Enter inserts a newline; the box grows with content.
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(e); }
+});
+chatInput.addEventListener('input', () => {
+  chatInput.style.height = 'auto';
+  chatInput.style.height = Math.min(chatInput.scrollHeight, 140) + 'px';
+});
+
+async function uploadFile(f) {
+  const name = f.stageName || f.name || 'file';
+  try {
+    await fetch('/upload?g=' + GROUP + '&name=' + encodeURIComponent(name), { method: 'POST', body: f });
+  } catch (err) { alert('upload failed: ' + name); }
+}
+
+document.getElementById('chat-fileinput').addEventListener('change', (e) => {
+  for (const f of [...e.target.files]) stageFile(f);
+  e.target.value = '';
+});
+
+// Pasting a file / clipboard screenshot STAGES it (nothing sends until Send).
+chatInput.addEventListener('paste', (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const it of items) {
+    if (it.kind === 'file') {
+      const f = it.getAsFile();
+      if (f) { e.preventDefault(); stageFile(f); }
+    }
+  }
+});
+
+// Image lines open in the preview modal (delegated — messages re-render often).
+chatMsgs.addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-img]');
+  if (!a) return;
+  e.preventDefault();
+  openImg(a.dataset.img);
+});
+function openImg(url) {
+  document.getElementById('imgmodal-img').src = url;
+  const dl = document.getElementById('imgmodal-dl');
+  dl.href = url;
+  dl.setAttribute('download', url.split('/').pop().replace(/^\d+-/, ''));
+  document.getElementById('imgmodal').classList.add('open');
+}
+function closeImg() {
+  document.getElementById('imgmodal').classList.remove('open');
+  document.getElementById('imgmodal-img').src = '';
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeImg(); });
+
+// chatView: 'live' | 'list' (archive index) | a number (viewing archive #n)
+let chatView = 'live';
+let chatRaw = [];
+
+function msgHtml(m) {
+  const cls = m.role === 'user' ? 'm-user' : (m.role === 'status' ? 'm-status' : 'm-manager');
+  const d = document.createElement('div');
+  d.className = cls;
+  if (m.file) {
+    const a = document.createElement('a');
+    const url = G + 'uploads/' + m.file;
+    a.href = url;
+    if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(m.file)) a.dataset.img = url;
+    else a.target = '_blank';
+    a.textContent = m.text;
+    d.appendChild(a);
+  } else {
+    d.textContent = m.text;
+  }
+  // Right-to-left content (e.g. Persian/Arabic) reads RTL, prefix included.
+  if (/[؀-ۿ]/.test(m.text)) d.dir = 'rtl';
+  return d.outerHTML;
+}
+
+// Split by clear-markers: everything before each marker is an archive session.
+function chatSegments() {
+  const archives = [];
+  let cur = [];
+  for (const m of chatRaw) {
+    if (m.role === 'clear') { archives.push(cur); cur = []; }
+    else cur.push(m);
+  }
+  return { archives: archives.filter(s => s.length), current: cur };
+}
+
+function fmtRange(seg) {
+  const f = new Date(seg[0].ts), l = new Date(seg[seg.length - 1].ts);
+  const d = (x) => x.toLocaleDateString() + ' ' + x.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d(f) + ' → ' + d(l);
+}
+
+function renderChat() {
+  const { archives, current } = chatSegments();
+
+  if (chatView === 'list') {
+    let html = '<div class="arch-banner">archives — click one to read · archive button returns to live</div>';
+    if (!archives.length) html += '<div class="m-status">no archives yet</div>';
+    archives.map((seg, i) => ({ seg, i })).reverse().forEach(({ seg, i }) => {
+      const d = document.createElement('div');
+      d.className = 'arch-row';
+      d.dataset.arch = i;
+      d.textContent = `#${i + 1} · ${seg.length} messages · ${fmtRange(seg)}`;
+      html += d.outerHTML;
+    });
+    chatMsgs.innerHTML = html;
+    return;
+  }
+
+  if (typeof chatView === 'number') {
+    const seg = archives[chatView] || [];
+    chatMsgs.innerHTML = '<div class="arch-banner">archive #' + (chatView + 1) +
+      ' (read-only) — archive button returns to live</div>' + seg.map(msgHtml).join('');
+    return;
+  }
+
+  // live
+  const nearBottom = chatMsgs.scrollHeight - chatMsgs.scrollTop - chatMsgs.clientHeight < 60;
+  const last = current[current.length - 1];
+  if (last && (last.role === 'manager' || last.role === 'status')) awaitingReply = false;
+  let html = current.filter(m => m.role !== 'typing' && (m.file || (m.text || '').trim())).map(msgHtml).join('');
+  // A trailing typing marker = the manager is composing; awaitingReply covers
+  // the gap BEFORE the manager's first append too.
+  if ((last && last.role === 'typing') || awaitingReply) html += '<div class="m-typing">. . .</div>';
+  chatMsgs.innerHTML = html;
+  if (nearBottom) chatMsgs.scrollTop = chatMsgs.scrollHeight;
+}
+
+async function pollChat() {
+  try {
+    const r = await fetch(G + 'chat.jsonl?t=' + Date.now());
+    if (!r.ok) return;
+    const text = await r.text();
+    if (text === lastChatText) return;
+    lastChatText = text;
+    chatRaw = text.split(/\r?\n/).filter(l => l.trim()).map(l => {
+      try { return JSON.parse(l); } catch (e) { return null; }
+    }).filter(Boolean);
+    renderChat();
+  } catch (e) { /* server down — conn badge already says so */ }
+}
+
+async function clearChat() {
+  if (!confirm('Clear the chat? It moves to the archive.')) return;
+  try { await fetch('/clear?g=' + GROUP, { method: 'POST' }); } catch (e) {}
+  chatView = 'live';
+  lastChatText = '';
+  pollChat();
+}
+
+function toggleArchives() {
+  chatView = (chatView === 'live') ? 'list' : 'live';
+  if (chatBox.classList.contains('min')) toggleChat();
+  renderChat();
+}
+
+// Archive rows are re-rendered often — delegate the clicks.
+chatMsgs.addEventListener('click', (e) => {
+  const row = e.target.closest('.arch-row');
+  if (!row) return;
+  chatView = parseInt(row.dataset.arch, 10);
+  renderChat();
+});
+
+pollChat();
+setInterval(pollChat, 1000);
+</script>
+</body>
+</html>
